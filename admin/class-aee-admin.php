@@ -46,13 +46,13 @@ class AEE_Admin {
 
     public function register_menus(): void {
         add_menu_page(
-            __( 'AI Editorial Engine', 'ai-editorial-engine' ),
-            __( 'AI تحرير', 'ai-editorial-engine' ),
+            __( 'Kontentainment AI', 'ai-editorial-engine' ),
+            __( 'K AI', 'ai-editorial-engine' ),
             'manage_options',
             'aee-dashboard',
             [ $this, 'page_dashboard' ],
             'dashicons-welcome-write-blog',
-            30
+            6
         );
 
         $pages = [
