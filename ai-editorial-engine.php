@@ -3,7 +3,7 @@
  * Plugin Name:       Kontentainment AI
  * Plugin URI:        https://github.com/kollectivco/kposts
  * Description:       محرك تحريري ذكي يستخدم Gemini وClaude وChatGPT لجلب المحتوى وإعادة صياغته بأسلوب عامية مصرية صحفية.
- * Version:           1.0.4
+ * Version:           1.0.5
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Kollectiv
@@ -17,7 +17,7 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 // Constants
-define( 'AEE_VERSION',    '1.0.4' );
+define( 'AEE_VERSION',    '1.0.5' );
 define( 'AEE_DB_VERSION', '1.0' );
 define( 'AEE_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AEE_PLUGIN_URL', plugin_dir_url( __FILE__ ) );

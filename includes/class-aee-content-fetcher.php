@@ -229,10 +229,99 @@ class AEE_Content_Fetcher {
             if ( $today_count >= $limit ) break;
 
             if ( $source['type'] === 'rss' ) {
-                $fetched     = $this->fetch_from_rss( $source );
-                $today_count += $fetched;
+                $fetched = $this->fetch_from_rss( $source );
+            } else {
+                $fetched = $this->fetch_from_scrape( $source );
+            }
+            $today_count += $fetched;
+        }
+    }
+
+    /**
+     * جلب المحتوى من موقع (Scraping)
+     *
+     * @param array $source
+     * @return int
+     */
+    public function fetch_from_scrape( array $source ): int {
+        $url = $source['url'];
+        $response = wp_remote_get( $url, [
+            'timeout'    => 15,
+            'user-agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        ] );
+
+        if ( is_wp_error( $response ) ) {
+            $this->log_error( $source['id'], $response->get_error_message() );
+            return 0;
+        }
+
+        $html = wp_remote_retrieve_body( $response );
+        if ( empty( $html ) ) return 0;
+
+        // Find all href links
+        preg_match_all( '/href=["\']([^"\']+)["\']/i', $html, $matches );
+        if ( empty( $matches[1] ) ) return 0;
+
+        $links = array_unique( $matches[1] );
+        $base_url = parse_url( $url, PHP_URL_SCHEME ) . '://' . parse_url( $url, PHP_URL_HOST );
+
+        $count = 0;
+        foreach ( $links as $link ) {
+            if ( $count >= 5 ) break; // Limit to 5 per scrape to avoid timeout
+
+            if ( strpos( $link, 'http' ) !== 0 ) {
+                if ( strpos( $link, '/' ) === 0 ) {
+                    $link = rtrim( $base_url, '/' ) . $link;
+                } else {
+                    continue;
+                }
+            }
+
+            // Simple heuristic for article links
+            if ( strlen( $link ) < 40 || strpos( $link, '-' ) === false ) continue;
+            if ( $this->is_url_in_queue( $link ) ) continue;
+
+            $article_response = wp_remote_get( $link, [
+                'timeout'    => 15,
+                'user-agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            ] );
+
+            if ( is_wp_error( $article_response ) ) continue;
+
+            $article_html = wp_remote_retrieve_body( $article_response );
+            $content = $this->extract_readable_content( $article_html );
+            
+            if ( empty( $content ) || strlen( $content ) < 300 ) continue;
+
+            $title = '';
+            if ( preg_match( '/<title>(.*?)<\/title>/is', $article_html, $t_matches ) ) {
+                $title = trim( strip_tags( $t_matches[1] ) );
+            }
+            if ( empty( $title ) ) $title = 'مقال مسحوب: ' . wp_date('Y-m-d H:i');
+
+            // Apply keyword filters
+            $combined = $title . ' ' . $content;
+            if ( ! $this->filter_by_keywords(
+                $combined,
+                $source['keywords_whitelist'] ?? '',
+                $source['keywords_blacklist'] ?? ''
+            ) ) {
+                continue;
+            }
+
+            $data = [
+                'source_id'        => $source['id'],
+                'original_url'     => sanitize_url( $link ),
+                'original_title'   => sanitize_text_field( $title ),
+                'original_content' => wp_kses_post( $content ),
+            ];
+
+            if ( $this->save_to_queue( $data ) ) {
+                $count++;
             }
         }
+
+        return $count;
     }
 
     /**

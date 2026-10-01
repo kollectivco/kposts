@@ -220,7 +220,7 @@ class AEE_Admin {
             if ( ! $source ) {
                 wp_send_json_error( [ 'message' => 'المصدر غير موجود' ] );
             }
-            $count = $source['type'] === 'rss' ? $fetcher->fetch_from_rss( $source ) : 0;
+            $count = $source['type'] === 'rss' ? $fetcher->fetch_from_rss( $source ) : $fetcher->fetch_from_scrape( $source );
         } else {
             // Fetch all active sources
             $fetcher->run_scheduled_fetch();
