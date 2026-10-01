@@ -29,6 +29,7 @@ class AEE_Admin {
             'aee_get_queue_stats',
             'aee_trigger_learning',
             'aee_seed_dictionary',
+            'aee_import_dictionary',
             'aee_toggle_source',
         ];
 
@@ -507,6 +508,35 @@ class AEE_Admin {
 
         $count = AEE_Activator::seed_dictionary();
         wp_send_json_success( [ 'message' => sprintf( 'تم استيراد %d كلمة من الملف الافتراضي', $count ) ] );
+    }
+
+    public function ajax_import_dictionary(): void {
+        $this->verify_nonce();
+
+        $json = stripslashes( $_POST['json'] ?? '' );
+        $data = json_decode( $json, true );
+        
+        if ( ! is_array( $data ) ) {
+            wp_send_json_error( [ 'message' => 'ملف JSON غير صالح' ] );
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'aee_dictionary';
+        $inserted = 0;
+
+        foreach ( $data as $entry ) {
+            if ( ! empty( $entry['formal'] ) && ! empty( $entry['colloquial'] ) ) {
+                $wpdb->insert( $table, [
+                    'formal_word'     => sanitize_text_field( $entry['formal'] ),
+                    'colloquial_word' => sanitize_text_field( $entry['colloquial'] ),
+                    'context'         => sanitize_text_field( $entry['context'] ?? 'general' ),
+                    'is_active'       => 1
+                ] );
+                $inserted++;
+            }
+        }
+
+        wp_send_json_success( [ 'message' => sprintf( 'تم استيراد %d كلمة بنجاح', $inserted ) ] );
     }
 
     // =========================================================================

@@ -29,6 +29,14 @@ arsort( $contexts );
         <button type="button" id="aee-add-dict-entry" class="aee-btn aee-btn-primary">
             ➕ <?php esc_html_e( 'إضافة كلمة', 'ai-editorial-engine' ); ?>
         </button>
+        <button type="button" id="aee-import-dict-btn" class="aee-btn aee-btn-secondary">
+            📥 <?php esc_html_e( 'استيراد ملف JSON', 'ai-editorial-engine' ); ?>
+        </button>
+        <button type="button" id="aee-download-example-btn" class="aee-btn aee-btn-secondary" style="font-size:12px;">
+            📄 <?php esc_html_e( 'تحميل ملف مثال', 'ai-editorial-engine' ); ?>
+        </button>
+        <input type="file" id="aee-import-file" accept=".json" style="display:none;">
+        
         <span style="font-size:13px; color:#50575e;"><?php echo count( $entries ); ?> كلمة في المعجم</span>
 
         <?php foreach ( $contexts as $ctx => $count ) : ?>

@@ -247,6 +247,53 @@
   // DICTIONARY MANAGEMENT
   // ============================================================
 
+  $(document).on('click', '#aee-download-example-btn', function () {
+    const exampleData = [
+      { formal: "الآن", colloquial: "دلوقتي", context: "time" },
+      { formal: "يذهب", colloquial: "بيروح", context: "verb" },
+      { formal: "لماذا", colloquial: "ليه", context: "question" }
+    ];
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exampleData, null, 2));
+    const dlAnchorElem = document.createElement('a');
+    dlAnchorElem.setAttribute("href", dataStr);
+    dlAnchorElem.setAttribute("download", "dictionary_example.json");
+    dlAnchorElem.click();
+  });
+
+  $(document).on('click', '#aee-import-dict-btn', function () {
+    $('#aee-import-file').trigger('click');
+  });
+
+  $(document).on('change', '#aee-import-file', function (e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const json = e.target.result;
+        // Basic validation
+        JSON.parse(json);
+        
+        aeeShowToast('جاري استيراد الكلمات...', 'info');
+        aeeAjax(
+          'aee_import_dictionary',
+          { json: json },
+          function (res) {
+            aeeShowToast('✅ ' + res.message, 'success');
+            setTimeout(() => location.reload(), 1500);
+          },
+          function (msg) { aeeShowToast(msg, 'error'); }
+        );
+      } catch (err) {
+        aeeShowToast('ملف JSON غير صالح', 'error');
+      }
+    };
+    reader.readAsText(file);
+    // Reset input
+    $(this).val('');
+  });
+
   $(document).on('click', '#aee-add-dict-entry', function () {
     openDictModal({});
   });
