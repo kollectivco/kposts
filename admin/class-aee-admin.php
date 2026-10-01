@@ -176,13 +176,23 @@ class AEE_Admin {
             wp_send_json_error( [ 'message' => 'أدخل المفتاح أولاً' ] );
         }
 
-        $result = match ( $api ) {
-            'gemini' => ( new AEE_Gemini( $key ) )->test_connection(),
-            'claude' => ( new AEE_Claude( $key ) )->test_connection(),
-            'openai' => ( new AEE_OpenAI( $key ) )->test_connection(),
-            'google' => ( new AEE_Translator( $key ) )->test_connection(),
-            default  => 'API غير معروف',
-        };
+        switch ( $api ) {
+            case 'gemini':
+                $result = ( new AEE_Gemini( $key ) )->test_connection();
+                break;
+            case 'claude':
+                $result = ( new AEE_Claude( $key ) )->test_connection();
+                break;
+            case 'openai':
+                $result = ( new AEE_OpenAI( $key ) )->test_connection();
+                break;
+            case 'google':
+                $result = ( new AEE_Translator( $key ) )->test_connection();
+                break;
+            default:
+                $result = 'API غير معروف';
+                break;
+        }
 
         if ( $result === true ) {
             wp_send_json_success( [ 'message' => 'الاتصال ناجح!' ] );

@@ -177,13 +177,23 @@ class AEE_REST_API {
         $api = sanitize_text_field( $request->get_param( 'api' ) );
         $key = sanitize_text_field( $request->get_param( 'key' ) );
 
-        $result = match ( $api ) {
-            'gemini' => ( new AEE_Gemini( $key ) )->test_connection(),
-            'claude' => ( new AEE_Claude( $key ) )->test_connection(),
-            'openai' => ( new AEE_OpenAI( $key ) )->test_connection(),
-            'google' => ( new AEE_Translator( $key ) )->test_connection(),
-            default  => 'Unknown API',
-        };
+        switch ( $api ) {
+            case 'gemini':
+                $result = ( new AEE_Gemini( $key ) )->test_connection();
+                break;
+            case 'claude':
+                $result = ( new AEE_Claude( $key ) )->test_connection();
+                break;
+            case 'openai':
+                $result = ( new AEE_OpenAI( $key ) )->test_connection();
+                break;
+            case 'google':
+                $result = ( new AEE_Translator( $key ) )->test_connection();
+                break;
+            default:
+                $result = 'Unknown API';
+                break;
+        }
 
         if ( $result === true ) {
             return new \WP_REST_Response( [ 'connected' => true ], 200 );

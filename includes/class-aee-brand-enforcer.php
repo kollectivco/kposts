@@ -184,7 +184,7 @@ class AEE_Brand_Enforcer {
         if ( empty( $magazine ) ) return $text;
 
         // Check if attribution already exists
-        if ( str_contains( $text, '— ' . $magazine ) ) return $text;
+        if ( strpos( $text, '— ' . $magazine ) !== false ) return $text;
 
         // Only add if article doesn't already have one
         return $text . "\n\n---\n*المحتوى بتصرف — " . esc_html( $magazine ) . '*';

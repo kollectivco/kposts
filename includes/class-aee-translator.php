@@ -128,7 +128,7 @@ class AEE_Translator {
             return new WP_Error( 'no_deepl_key', __( 'مفتاح DeepL غير موجود', 'ai-editorial-engine' ) );
         }
 
-        $api_url = str_contains( $this->deepl_key, ':fx' )
+        $api_url = strpos( $this->deepl_key, ':fx' ) !== false
             ? 'https://api-free.deepl.com/v2/translate'
             : 'https://api.deepl.com/v2/translate';
 
