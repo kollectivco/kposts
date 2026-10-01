@@ -135,7 +135,7 @@ arsort( $contexts );
         </div>
         <div class="aee-modal-footer">
             <button class="aee-btn aee-btn-secondary aee-btn-cancel">إلغاء</button>
-            <button class="aee-btn aee-btn-primary" onclick="document.getElementById('aee-dict-form').dispatchEvent(new Event('submit'))">حفظ</button>
+            <button type="button" class="aee-btn aee-btn-primary" id="aee-save-dict-btn">حفظ</button>
         </div>
     </div>
 </div>

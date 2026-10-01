@@ -153,7 +153,7 @@ $sources = $wpdb->get_results(
         </div>
         <div class="aee-modal-footer">
             <button class="aee-btn aee-btn-secondary aee-btn-cancel"><?php esc_html_e( 'إلغاء', 'ai-editorial-engine' ); ?></button>
-            <button class="aee-btn aee-btn-primary" onclick="document.getElementById('aee-source-form').dispatchEvent(new Event('submit'))"><?php esc_html_e( 'حفظ', 'ai-editorial-engine' ); ?></button>
+            <button type="button" class="aee-btn aee-btn-primary" id="aee-save-source-btn"><?php esc_html_e( 'حفظ', 'ai-editorial-engine' ); ?></button>
         </div>
     </div>
 </div>
