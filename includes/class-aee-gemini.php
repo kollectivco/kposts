@@ -16,7 +16,7 @@ class AEE_Gemini {
 
     public function __construct( string $api_key = '' ) {
         $this->api_key       = $api_key ?: aee_get_api_key( 'gemini_api_key' );
-        $this->default_model = 'gemini-1.5-pro';
+        $this->default_model = 'gemini-1.5-pro-latest';
     }
 
     /**

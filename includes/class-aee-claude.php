@@ -16,7 +16,7 @@ class AEE_Claude {
 
     public function __construct( string $api_key = '' ) {
         $this->api_key       = $api_key ?: aee_get_api_key( 'claude_api_key' );
-        $this->default_model = 'claude-3-5-sonnet-20241022';
+        $this->default_model = 'claude-3-5-sonnet-20240620';
     }
 
     /**
