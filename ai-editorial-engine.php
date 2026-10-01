@@ -3,7 +3,7 @@
  * Plugin Name:       AI Editorial Engine
  * Plugin URI:        https://github.com/ai-editorial-engine
  * Description:       محرك تحريري ذكي يستخدم Gemini وClaude وChatGPT لجلب المحتوى وإعادة صياغته بأسلوب عامية مصرية صحفية.
- * Version:           1.0.1
+ * Version:           1.0.2
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            AI Editorial Engine
@@ -17,7 +17,7 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 // Constants
-define( 'AEE_VERSION',    '1.0.1' );
+define( 'AEE_VERSION',    '1.0.2' );
 define( 'AEE_DB_VERSION', '1.0' );
 define( 'AEE_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AEE_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -49,13 +49,15 @@ require_once AEE_PLUGIN_DIR . 'api/class-aee-rest-api.php';
 
 // Plugin Update Checker (GitHub)
 require_once AEE_PLUGIN_DIR . 'includes/plugin-update-checker/plugin-update-checker.php';
-$aeeUpdateChecker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
-	'https://github.com/kollectivco/kposts/',
-	__FILE__,
-	'ai-editorial-engine'
-);
-// Set the branch that contains the stable release
-$aeeUpdateChecker->setBranch('main');
+if ( class_exists( '\\YahnisElsts\\PluginUpdateChecker\\v5\\PucFactory' ) ) {
+    $aeeUpdateChecker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+        'https://github.com/kollectivco/kposts/',
+        __FILE__,
+        'ai-editorial-engine'
+    );
+    // Set the branch that contains the stable release
+    $aeeUpdateChecker->setBranch('main');
+}
 
 /**
  * Activation hook.
