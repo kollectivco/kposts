@@ -294,8 +294,9 @@ class AEE_Content_Fetcher {
                 continue;
             }
 
-            // 4. Simple heuristic for article links (must have length and dashes)
-            if ( strlen( $link ) < 30 || strpos( $link, '-' ) === false ) {
+            // 4. Simple heuristic for article links (must have some path length)
+            $path = parse_url( $link, PHP_URL_PATH ) ?? '';
+            if ( strlen( $path ) < 10 || $path === '/' ) {
                 continue;
             }
 
@@ -311,7 +312,8 @@ class AEE_Content_Fetcher {
             $article_html = wp_remote_retrieve_body( $article_response );
             $content = $this->extract_readable_content( $article_html );
             
-            if ( empty( $content ) || strlen( $content ) < 300 ) continue;
+            // Relaxed content length check in case of short news or aggressive stripping
+            if ( empty( $content ) || mb_strlen( trim( strip_tags( $content ) ) ) < 100 ) continue;
 
             $title = '';
             if ( preg_match( '/<title>(.*?)<\/title>/is', $article_html, $t_matches ) ) {
