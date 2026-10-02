@@ -47,7 +47,9 @@
             data: Object.assign({ action:'kaw_generate', nonce:KAW.nonce }, params),
             success: function(res){
                 if(res.success) onSuccess(res.data.article, res.data.seo);
-                else $output.addClass('kaw-empty').html('<span class="kaw-placeholder" style="color:#c0392b;">Error: '+res.data+'</span>');
+                else $output.addClass('kaw-empty').empty().append(
+                    $('<span>').addClass('kaw-placeholder').css('color','#c0392b').text('Error: '+(res.data||'Could not generate article.'))
+                );
             },
             error: function(){ $output.addClass('kaw-empty').html('<span class="kaw-placeholder" style="color:#c0392b;">Request failed.</span>'); },
             complete: function(){ $btn.prop('disabled', false).text('Write article'); },
@@ -119,7 +121,7 @@
     function initNewsfeed(){
         var allNews=[], activeFilter='all';
         var feedType='News', feedTone='Informative', feedLang='Arabic';
-        var selectedItem=null, fetchedContent='', fetchedImage='', lastSeo=null;
+        var selectedItem=null, fetchedContent='', fetchedImage='', lastSeo=null, fetchRequestId=0;
 
         typeListener('kaw-feed-type-grid', function(v){ feedType=v; });
         chipListener('kaw-feed-tone-row','tone', function(v){ feedTone=v; });
@@ -147,11 +149,16 @@
                         '<div class="kaw-card-meta"><span class="kaw-src-tag">'+item.label+'</span></div></div>';
             });
             $('#kaw-news-list').html(html);
+            $('#kaw-news-list .kaw-news-card').attr({ role:'button', tabindex:'0' }).each(function(){
+                var item=allNews[parseInt($(this).data('idx'),10)];
+                $(this).attr('aria-pressed', selectedItem&&item&&selectedItem.url===item.url ? 'true' : 'false');
+            });
         }
 
         $('#kaw-news-list').on('click', '.kaw-news-card', function(){
             var idx=parseInt($(this).data('idx'),10);
-            selectedItem=allNews[idx]; fetchedContent=''; fetchedImage='';
+            selectedItem=allNews[idx]; fetchedContent=''; fetchedImage=''; lastSeo=null;
+            var requestId=++fetchRequestId;
             renderNews();
             $('#kaw-sel-title').text(selectedItem.title);
             $('#kaw-sel-link').attr('href', selectedItem.url);
@@ -165,6 +172,7 @@
                 url:KAW.ajax_url, method:'POST',
                 data:{ action:'kaw_fetch_article', nonce:KAW.nonce, url:selectedItem.url },
                 success:function(res){
+                    if(requestId!==fetchRequestId) return;
                     if(res.success && res.data.content){
                         fetchedContent=res.data.content;
                         fetchedImage=res.data.image||'';
@@ -174,8 +182,14 @@
                         $status.attr('class','kaw-fetch-status kaw-fetch-warn').text('Could not fetch full content \u2014 will write from headline only.');
                     }
                 },
-                error:function(){ $status.attr('class','kaw-fetch-status kaw-fetch-warn').text('Could not fetch content \u2014 will write from headline only.'); },
+                error:function(){
+                    if(requestId!==fetchRequestId) return;
+                    $status.attr('class','kaw-fetch-status kaw-fetch-warn').text('Could not fetch content \u2014 will write from headline only.');
+                },
             });
+        });
+        $('#kaw-news-list').on('keydown', '.kaw-news-card', function(e){
+            if(e.key==='Enter' || e.key===' '){ e.preventDefault(); $(this).trigger('click'); }
         });
 
         $('.kaw-src-btn').on('click', function(){
@@ -189,6 +203,8 @@
             var $output=$('#kaw-feed-output');
             $('#kaw-feed-output-panel').show();
             $output.html('<span class="kaw-placeholder">Writing from source content...</span>');
+            $('#kaw-feed-copy-btn, #kaw-feed-insert-btn').hide();
+            lastSeo=null;
             $('#kaw-feed-wc-count').text(''); $('#kaw-feed-seo-box').hide();
 
             doGenerate({
@@ -202,6 +218,7 @@
                 applyDir($output, article);
                 $('#kaw-feed-wc-count').text(countWords(article)+' words');
                 renderSEO($('#kaw-feed-seo-box'), seo);
+                $('#kaw-feed-copy-btn, #kaw-feed-insert-btn').show();
             });
         });
 

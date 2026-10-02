@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), 12-source news feed, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:           2.0.0
+ * Version:     6.2.0
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '2.0.0' );
+define( 'KAW_VERSION', '6.2.0' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -188,10 +188,10 @@ function kaw_has_any_key() {
 // ── Admin menu ────────────────────────────────────────────────────────────────
 
 add_action( 'admin_menu', function () {
-    add_menu_page( 'K AI', 'K AI', 'edit_posts', 'kaw-writer', 'kaw_render_writer_page', 'dashicons-edit-large', 6 );
-    add_submenu_page( 'kaw-writer', 'كتابة مقال', 'كتابة مقال', 'edit_posts',     'kaw-writer',   'kaw_render_writer_page' );
-    add_submenu_page( 'kaw-writer', 'مصادر الأخبار',     'مصادر الأخبار',     'edit_posts',     'kaw-newsfeed', 'kaw_render_newsfeed_page' );
-    add_submenu_page( 'kaw-writer', 'الإعدادات',      'الإعدادات',      'manage_options', 'kaw-settings', 'kaw_render_settings_page' );
+    add_menu_page( 'AI Writer', 'AI Writer', 'edit_posts', 'kaw-writer', 'kaw_render_writer_page', 'dashicons-edit-large', 6 );
+    add_submenu_page( 'kaw-writer', 'Write Article', 'Write Article', 'edit_posts',     'kaw-writer',   'kaw_render_writer_page' );
+    add_submenu_page( 'kaw-writer', 'News Feed',     'News Feed',     'edit_posts',     'kaw-newsfeed', 'kaw_render_newsfeed_page' );
+    add_submenu_page( 'kaw-writer', 'Settings',      'Settings',      'manage_options', 'kaw-settings', 'kaw_render_settings_page' );
 });
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -222,8 +222,8 @@ function kaw_render_settings_page() {
         'poe'      => 'poe.com/api_key',
     ];
     ?>
-    <div class="wrap" dir="rtl">
-        <h1>إعدادات K AI</h1>
+    <div class="wrap">
+        <h1>AI Writer — Settings</h1>
         <form method="post" action="options.php">
             <?php settings_fields( 'kaw_settings_group' ); ?>
 
@@ -348,7 +348,7 @@ function kaw_lang_field( $prefix ) { ?>
 function kaw_render_writer_page() {
     $has_key = kaw_has_any_key();
     ?>
-    <div class="wrap kaw-wrap" dir="rtl">
+    <div class="wrap kaw-wrap">
         <div class="kaw-header">
             <span class="kaw-logo">Kontentainment</span>
             <span class="kaw-badge">AI Writer</span>
@@ -424,7 +424,7 @@ function kaw_render_writer_page() {
 function kaw_render_newsfeed_page() {
     $has_key = kaw_has_any_key();
     ?>
-    <div class="wrap kaw-wrap" dir="rtl">
+    <div class="wrap kaw-wrap">
         <div class="kaw-header">
             <span class="kaw-logo">Kontentainment</span>
             <span class="kaw-badge">News Feed</span>
@@ -524,6 +524,7 @@ add_action( 'wp_ajax_kaw_fetch_news', 'kaw_ajax_fetch_news' );
 
 function kaw_ajax_fetch_news() {
     check_ajax_referer( 'kaw_nonce', 'nonce' );
+    if ( ! current_user_can('edit_posts') ) wp_send_json_error('Permission denied.');
 
     $registry  = kaw_sources();
     $requested = isset($_POST['sources']) ? array_map('sanitize_text_field', (array) $_POST['sources']) : array_keys($registry);
@@ -743,6 +744,14 @@ function kaw_ajax_generate() {
     if ( empty($api_key) )  wp_send_json_error('No API key for ' . $provider['label'] . '. Go to AI Writer → Settings.');
     if ( empty($subject) )  wp_send_json_error('Please enter a subject.');
 
+    // Enforce the same bounds as the UI; AJAX input can be changed by the caller.
+    $types = kaw_types();
+    $tones = kaw_tones();
+    if ( ! isset($types[$type]) ) $type = 'News';
+    if ( ! isset($tones[$tone]) ) $tone = 'Informative';
+    if ( ! in_array($lang, [ 'Arabic', 'English' ], true) ) $lang = 'Arabic';
+    $wordcount = max(150, min(5000, $wordcount));
+
     $lang_instruction = $lang === 'English'
         ? "Write the entire article in English."
         : "اكتب المقال كامل باللهجة المصرية العامية بأسلوب صحفي مودرن — مش فصحى رسمية جامدة ومش لغة شارع مبتذلة، لكن نبرة مجلة ترفيه شبابية محترفة وكول، زي ما بيتكلم محرر شاطر فاهم في الموسيقى والسينما وبيكتب لجمهور شبابي مصري بيفهم في الكلتشر.
@@ -787,8 +796,6 @@ STRICT ACCURACY RULES:
 - Match the target word count as closely as possible.";
 
     // Inject article-type and tone guidance from the registries
-    $types = kaw_types();
-    $tones = kaw_tones();
     if ( isset($types[$type]) ) {
         $system .= "\n\nنوع المقال المطلوب: {$types[$type][1]} — {$types[$type][2]}.";
     }
@@ -861,9 +868,8 @@ function kaw_call_provider( $provider, $system, $user, $max_tokens = 8192 ) {
                 'messages'   => [ [ 'role' => 'user', 'content' => $user ] ],
             ]),
         ]);
-        if ( is_wp_error($resp) ) return $resp;
-        $body = json_decode( wp_remote_retrieve_body($resp), true );
-        if ( ! empty($body['error']) ) return new WP_Error('api', $body['error']['message'] ?? 'API error.');
+        $body = kaw_decode_provider_response( $resp, $provider );
+        if ( is_wp_error($body) ) return $body;
         return $body['content'][0]['text'] ?? '';
     }
 
@@ -883,12 +889,8 @@ function kaw_call_provider( $provider, $system, $user, $max_tokens = 8192 ) {
                 'max_output_tokens' => $max_tokens,
             ]),
         ]);
-        if ( is_wp_error($resp) ) return $resp;
-        $body = json_decode( wp_remote_retrieve_body($resp), true );
-        if ( ! empty($body['error']) ) {
-            $msg = is_array($body['error']) ? ($body['error']['message'] ?? 'API error.') : $body['error'];
-            return new WP_Error('api', $msg);
-        }
+        $body = kaw_decode_provider_response( $resp, $provider );
+        if ( is_wp_error($body) ) return $body;
         // Extract text from output[].content[].text
         $out = '';
         if ( ! empty($body['output']) && is_array($body['output']) ) {
@@ -918,13 +920,31 @@ function kaw_call_provider( $provider, $system, $user, $max_tokens = 8192 ) {
             ],
         ]),
     ]);
-    if ( is_wp_error($resp) ) return $resp;
-    $body = json_decode( wp_remote_retrieve_body($resp), true );
-    if ( ! empty($body['error']) ) {
-        $msg = is_array($body['error']) ? ($body['error']['message'] ?? 'API error.') : $body['error'];
-        return new WP_Error('api', $msg);
-    }
+    $body = kaw_decode_provider_response( $resp, $provider );
+    if ( is_wp_error($body) ) return $body;
     return $body['choices'][0]['message']['content'] ?? '';
+}
+
+// Validate HTTP status and JSON structure consistently across provider APIs.
+function kaw_decode_provider_response( $response, $provider ) {
+    if ( is_wp_error($response) ) return $response;
+
+    $status = wp_remote_retrieve_response_code($response);
+    $raw    = wp_remote_retrieve_body($response);
+    $body   = json_decode($raw, true);
+
+    if ( ! is_array($body) ) {
+        return new WP_Error('api_response', $provider['label'] . ' returned an unreadable response.');
+    }
+
+    if ( $status < 200 || $status >= 300 || ! empty($body['error']) ) {
+        $error = $body['error'] ?? [];
+        $message = is_array($error) ? ($error['message'] ?? '') : (string) $error;
+        if ( $message === '' ) $message = $provider['label'] . ' returned HTTP ' . (int) $status . '.';
+        return new WP_Error('api_http', $message);
+    }
+
+    return $body;
 }
 
 function kaw_seo_field( $raw, $label ) {
@@ -1007,15 +1027,18 @@ function kaw_sideload_image( $url, $post_id ) {
     return $id;
 }
 
-// ── Auto Updater ────────────────────────────────────────────────────────────
-require_once dirname(__FILE__) . '/plugin-update-checker/plugin-update-checker.php';
-use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
+// ── GitHub updates ───────────────────────────────────────────────────────────
+// Version checks follow the Version header in this plugin file on the main branch.
+$kaw_update_checker_file = KAW_PATH . 'plugin-update-checker/plugin-update-checker.php';
+if ( is_readable($kaw_update_checker_file) ) {
+    require_once $kaw_update_checker_file;
 
-if ( class_exists( '\\YahnisElsts\\PluginUpdateChecker\\v5\\PucFactory' ) ) {
-    $myUpdateChecker = PucFactory::buildUpdateChecker(
-        'https://github.com/kollectivco/kposts/',
-        __FILE__,
-        'ai-editorial-engine'
-    );
-    $myUpdateChecker->setBranch('main');
+    if ( class_exists('\YahnisElsts\PluginUpdateChecker\v5\PucFactory') ) {
+        $kaw_update_checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+            'https://github.com/kollectivco/kposts/',
+            __FILE__,
+            'ai-editorial-engine'
+        );
+        $kaw_update_checker->setBranch('main');
+    }
 }
