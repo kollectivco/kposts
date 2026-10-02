@@ -267,7 +267,7 @@ class AEE_Content_Fetcher {
 
         $count = 0;
         foreach ( $links as $link ) {
-            if ( $count >= 5 ) break; // Limit to 5 per scrape to avoid timeout
+            if ( $count >= 5 ) break;
 
             if ( strpos( $link, 'http' ) !== 0 ) {
                 if ( strpos( $link, '/' ) === 0 ) {
@@ -277,8 +277,28 @@ class AEE_Content_Fetcher {
                 }
             }
 
-            // Simple heuristic for article links
-            if ( strlen( $link ) < 40 || strpos( $link, '-' ) === false ) continue;
+            // 1. Must be from the same domain
+            $link_host = parse_url( $link, PHP_URL_HOST );
+            $base_host = parse_url( $base_url, PHP_URL_HOST );
+            if ( str_replace( 'www.', '', $link_host ?? '' ) !== str_replace( 'www.', '', $base_host ?? '' ) ) {
+                continue;
+            }
+
+            // 2. Ignore assets and static files
+            if ( preg_match( '/\.(css|js|png|jpg|jpeg|gif|svg|pdf|json|xml)$/i', parse_url( $link, PHP_URL_PATH ) ?? '' ) ) {
+                continue;
+            }
+
+            // 3. Ignore common non-article paths
+            if ( preg_match( '/\/(category|tag|author|page|search)\//i', $link ) ) {
+                continue;
+            }
+
+            // 4. Simple heuristic for article links (must have length and dashes)
+            if ( strlen( $link ) < 30 || strpos( $link, '-' ) === false ) {
+                continue;
+            }
+
             if ( $this->is_url_in_queue( $link ) ) continue;
 
             $article_response = wp_remote_get( $link, [

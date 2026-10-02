@@ -126,6 +126,27 @@
   // PROCESS SINGLE QUEUE ITEM
   // ============================================================
 
+  $(document).on('click', '.aee-btn-delete-queue', function () {
+    if (!confirm('هل أنت متأكد من حذف هذا المقال من قائمة الانتظار؟')) return;
+    const $btn = $(this);
+    const id = $btn.data('item-id');
+
+    $btn.prop('disabled', true).text('⏳...');
+
+    aeeAjax(
+      'aee_delete_queue_item',
+      { id: id },
+      function (data) {
+        $btn.closest('tr').fadeOut(300, function() { $(this).remove(); });
+        aeeShowToast('✅ ' + data.message, 'success');
+      },
+      function (msg) {
+        $btn.prop('disabled', false).text('حذف');
+        aeeShowToast(msg, 'error');
+      }
+    );
+  });
+
   $(document).on('click', '.aee-btn-process', function () {
     const $btn   = $(this);
     const itemId = $btn.data('item-id');

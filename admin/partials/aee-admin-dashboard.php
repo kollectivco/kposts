@@ -123,6 +123,7 @@ $sources = $wpdb->get_results(
                                 <div class="aee-actions">
                                     <?php if ( $item['status'] === 'pending' ) : ?>
                                         <button class="aee-btn aee-btn-primary aee-btn-process" style="font-size:11px;" data-item-id="<?php echo esc_attr( $item['id'] ); ?>">معالجة</button>
+                                        <button class="aee-btn aee-btn-danger aee-btn-delete-queue" style="font-size:11px;" data-item-id="<?php echo esc_attr( $item['id'] ); ?>">حذف</button>
                                     <?php endif; ?>
                                     <?php if ( $item['wp_post_id'] ) : ?>
                                         <a href="<?php echo esc_url( get_edit_post_link( $item['wp_post_id'] ) ); ?>" class="aee-btn aee-btn-secondary" style="font-size:11px;" target="_blank">تحرير</a>

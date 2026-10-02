@@ -31,6 +31,7 @@ class AEE_Admin {
             'aee_seed_dictionary',
             'aee_import_dictionary',
             'aee_toggle_source',
+            'aee_delete_queue_item',
         ];
 
         foreach ( $ajax_actions as $action ) {
@@ -205,6 +206,19 @@ class AEE_Admin {
     // =========================================================================
     // AJAX: MANUAL FETCH
     // =========================================================================
+
+    public function ajax_delete_queue_item(): void {
+        $this->verify_nonce();
+        $id = intval( $_POST['id'] ?? 0 );
+        
+        if ( $id > 0 ) {
+            global $wpdb;
+            $wpdb->delete( "{$wpdb->prefix}aee_queue", [ 'id' => $id ], [ '%d' ] );
+            wp_send_json_success( [ 'message' => 'تم حذف المقال بنجاح' ] );
+        }
+        
+        wp_send_json_error( [ 'message' => 'معرف غير صالح' ] );
+    }
 
     public function ajax_manual_fetch(): void {
         $this->verify_nonce();
