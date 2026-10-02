@@ -129,16 +129,10 @@ class AEE_Automation {
                 }
             }
 
-            // Step 3: AI processing
+            // Step 3: Skip AI processing completely as per user request
+            // We just use the translated content
             $this->update_queue_status( $id, 'processing' );
-            $ai_result = $orchestrator->process_article( $content );
-
-            if ( ! empty( $ai_result['error'] ) && empty( $ai_result['content'] ) ) {
-                $this->fail_item( $id, $ai_result['error'] );
-                return;
-            }
-
-            $processed = $ai_result['content'];
+            $processed = $content;
 
             // Step 4: Apply Egyptian style
             $styled = $style_engine->apply_style( $processed, $intensity );
