@@ -84,12 +84,11 @@ class AEE_Translator {
      * @return string|WP_Error
      */
     private function translate_chunk( string $text, string $target, string $source ) {
-        $url  = 'https://translation.googleapis.com/language/translate/v2';
+        $url  = 'https://translation.googleapis.com/language/translate/v2?key=' . $this->google_key;
         $body = [
             'q'      => $text,
             'target' => $target,
             'format' => 'text',
-            'key'    => $this->google_key,
         ];
 
         if ( $source !== 'auto' ) {
