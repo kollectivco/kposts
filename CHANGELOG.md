@@ -1,5 +1,12 @@
 # Changelog
 
+## 6.6.0
+
+- Save Foxiz taglines in both the theme's `rb_global_meta` field and its `ruby_tagline` compatibility field.
+- Backfill the Foxiz editor field when opening drafts created by earlier plugin versions.
+- Consistently convert article and SEO text numbers to Arabic-Indic digits while preserving Latin SEO slugs.
+- Retry Gemini article requests after temporary 429, 500, 502, or 503 responses.
+
 ## 6.5.0
 
 - Added featured image choices: generate an image with Gemini, use the story link image, or add no image.

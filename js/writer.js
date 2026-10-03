@@ -4,6 +4,22 @@
 
     function countWords(s){ return s.replace(/^##\s+/gm,'').split(/\s+/).filter(Boolean).length; }
 
+    function arabicDigits(value){
+        var digits='٠١٢٣٤٥٦٧٨٩';
+        if(typeof value==='string') return value.replace(/[0-9]/g,function(digit){ return digits[digit]; });
+        if(Array.isArray(value)) return value.map(arabicDigits);
+        if(value && typeof value==='object'){
+            Object.keys(value).forEach(function(key){ value[key]=arabicDigits(value[key]); });
+        }
+        return value;
+    }
+
+    function arabicSeoDigits(seo){
+        if(!seo) return seo;
+        ['title','meta','tags'].forEach(function(key){ if(seo[key]) seo[key]=arabicDigits(seo[key]); });
+        return seo;
+    }
+
     function plainArticle(s){ return (s||'').replace(/^##\s+/gm,'').trim(); }
 
     function renderArticle($el, article){
@@ -118,6 +134,7 @@
         $('#kaw-generate-btn').on('click', function(){
             var subject = $('#kaw-subject').val().trim();
             if(!subject){ alert('Please enter a subject.'); return; }
+            var articleLang=lang;
             var $output = $('#kaw-output');
             lastArticle='';
             $output.removeClass('kaw-empty').html('<span class="kaw-placeholder">Writing...</span>');
@@ -126,9 +143,11 @@
 
             doGenerate({
                 type:type, subject:subject, notes:$('#kaw-notes').val().trim(),
-                tone:tone, lang:lang, wordcount:$('#kaw-wordcount').val(),
+                tone:tone, lang:articleLang, wordcount:$('#kaw-wordcount').val(),
                 article_content:'', seo: $('#kaw-seo-toggle').is(':checked') ? '1' : '',
             }, $(this), $output, function(article, seo){
+                article=arabicDigits(article);
+                seo=arabicSeoDigits(seo);
                 lastSeo = seo;
                 lastArticle=article;
                 $output.removeClass('kaw-empty');
@@ -247,6 +266,7 @@
 
         $('#kaw-feed-generate-btn').on('click', function(){
             if(!selectedItem) return;
+            var articleLang=feedLang;
             var $output=$('#kaw-feed-output');
             lastArticle='';
             $('#kaw-feed-output-panel').show();
@@ -257,10 +277,12 @@
 
             doGenerate({
                 type:feedType, subject:selectedItem.title, notes:$('#kaw-feed-notes').val().trim(),
-                tone:feedTone, lang:feedLang, wordcount:$('#kaw-feed-wordcount').val(),
+                tone:feedTone, lang:articleLang, wordcount:$('#kaw-feed-wordcount').val(),
                 source:selectedItem.label, article_content:fetchedContent,
                 seo: $('#kaw-feed-seo-toggle').is(':checked') ? '1' : '',
             }, $(this), $output, function(article, seo){
+                article=arabicDigits(article);
+                seo=arabicSeoDigits(seo);
                 lastSeo=seo;
                 lastArticle=article;
                 renderArticle($output, article);

@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), 12-source news feed, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     6.5.0
+ * Version:     6.6.0
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '6.5.0' );
+define( 'KAW_VERSION', '6.6.0' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -825,6 +825,8 @@ STRICT ACCURACY RULES:
 - Be specific and direct. No filler.
 - Match the target word count as closely as possible.";
 
+    $system .= "\n\nNUMBER FORMATTING: Always write every number in the article and SEO text with Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩), never Western digits (0123456789). Keep the SEO SLUG in Latin characters as instructed.";
+
     // Inject article-type and tone guidance from the registries
     if ( isset($types[$type]) ) {
         $system .= "\n\nنوع المقال المطلوب: {$types[$type][1]} — {$types[$type][2]}.";
@@ -935,7 +937,7 @@ function kaw_call_provider( $provider, $system, $user, $max_tokens = 8192 ) {
     }
 
     // OpenAI-compatible (ChatGPT, Gemini, DeepSeek, Mistral, Qwen)
-    $resp = wp_remote_post( $endpoint, [
+    $request_args = [
         'timeout' => 90,
         'headers' => [
             'Content-Type'  => 'application/json',
@@ -949,7 +951,15 @@ function kaw_call_provider( $provider, $system, $user, $max_tokens = 8192 ) {
                 [ 'role' => 'user',   'content' => $user ],
             ],
         ]),
-    ]);
+    ];
+
+    $max_attempts = ( $provider['pkey'] ?? '' ) === 'gemini' ? 3 : 1;
+    for ( $attempt = 1; $attempt <= $max_attempts; $attempt++ ) {
+        $resp = wp_remote_post( $endpoint, $request_args );
+        $status = is_wp_error($resp) ? 0 : wp_remote_retrieve_response_code($resp);
+        if ( $attempt === $max_attempts || ! in_array($status, [ 429, 500, 502, 503 ], true) ) break;
+        sleep($attempt);
+    }
     $body = kaw_decode_provider_response( $resp, $provider );
     if ( is_wp_error($body) ) return $body;
     return $body['choices'][0]['message']['content'] ?? '';
@@ -1020,7 +1030,7 @@ function kaw_ajax_create_draft() {
 
     $lines = explode("\n", trim($content));
     $title = ! empty($lines[0]) ? wp_strip_all_tags($lines[0]) : $subject;
-    $has_tagline = isset($lines[1], $lines[2]) && trim($lines[1]) !== '' && trim($lines[2]) === '';
+    $has_tagline = isset($lines[1]) && trim($lines[1]) !== '';
     $tagline = $has_tagline ? sanitize_text_field($lines[1]) : '';
     $body  = implode("\n", array_slice($lines, $has_tagline ? 2 : 1));
 
@@ -1035,8 +1045,15 @@ function kaw_ajax_create_draft() {
     $post_id = wp_insert_post($postarr);
     if ( is_wp_error($post_id) ) wp_send_json_error( $post_id->get_error_message() );
 
-    // Foxiz reads the single-post tagline from the ruby_tagline post meta field.
-    if ( $tagline ) update_post_meta($post_id, 'ruby_tagline', $tagline);
+    // Foxiz's editor and frontend read the tagline from rb_global_meta; it mirrors
+    // the value to ruby_tagline for integrations such as WPML.
+    if ( $tagline ) {
+        $foxiz_meta = get_post_meta($post_id, 'rb_global_meta', true);
+        if ( ! is_array($foxiz_meta) ) $foxiz_meta = [];
+        $foxiz_meta['tagline'] = $tagline;
+        update_post_meta($post_id, 'rb_global_meta', $foxiz_meta);
+        update_post_meta($post_id, 'ruby_tagline', $tagline);
+    }
 
     // Tags
     if ( $seo_tags ) {
@@ -1070,6 +1087,23 @@ function kaw_ajax_create_draft() {
         'edit_url'    => get_edit_post_link($post_id, 'raw'),
         'image_error' => $image_error,
     ]);
+}
+
+// Backfill Foxiz's editor-facing meta for drafts created before this integration fix.
+add_action('load-post.php', 'kaw_sync_foxiz_tagline_meta');
+function kaw_sync_foxiz_tagline_meta() {
+    $post_id = absint($_GET['post'] ?? 0);
+    if ( ! $post_id || ! current_user_can('edit_post', $post_id) ) return;
+
+    $tagline = get_post_meta($post_id, 'ruby_tagline', true);
+    if ( ! $tagline ) return;
+
+    $foxiz_meta = get_post_meta($post_id, 'rb_global_meta', true);
+    if ( ! is_array($foxiz_meta) ) $foxiz_meta = [];
+    if ( ! empty($foxiz_meta['tagline']) ) return;
+
+    $foxiz_meta['tagline'] = sanitize_text_field($tagline);
+    update_post_meta($post_id, 'rb_global_meta', $foxiz_meta);
 }
 
 function kaw_format_draft_body( $body ) {
