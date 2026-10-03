@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), 12-source news feed, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     6.4.0
+ * Version:     6.5.0
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '6.4.0' );
+define( 'KAW_VERSION', '6.5.0' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -408,6 +408,15 @@ function kaw_render_writer_page() {
                     </label>
                 </div>
 
+                <div class="kaw-field">
+                    <label class="kaw-label" for="kaw-image-mode">Featured image</label>
+                    <select id="kaw-image-mode" class="kaw-input">
+                        <option value="none">No featured image</option>
+                        <option value="gemini">Generate with Gemini</option>
+                    </select>
+                    <p class="description">Image generation uses your Gemini API key.</p>
+                </div>
+
                 <button id="kaw-generate-btn" class="kaw-generate-btn" <?php echo $has_key ? '' : 'disabled'; ?>>
                     Write article
                 </button>
@@ -479,9 +488,16 @@ function kaw_render_newsfeed_page() {
 
                     <div id="kaw-img-preview" class="kaw-img-preview" style="display:none;">
                         <img id="kaw-img-tag" src="" alt="" />
-                        <label class="kaw-checkbox-row" style="margin-top:6px;">
-                            <input type="checkbox" id="kaw-use-image" checked /> Use as featured image
-                        </label>
+                    </div>
+
+                    <div class="kaw-field" style="margin-top:14px;">
+                        <label class="kaw-label" for="kaw-feed-image-mode">Featured image</label>
+                        <select id="kaw-feed-image-mode" class="kaw-input">
+                            <option value="none">No featured image</option>
+                            <option value="link" disabled>Use image from story link</option>
+                            <option value="gemini">Generate with Gemini</option>
+                        </select>
+                        <p class="description">Choose the story image or generate a new one with Gemini.</p>
                     </div>
 
                     <div class="kaw-fetch-status" id="kaw-fetch-status"></div>
@@ -992,6 +1008,9 @@ function kaw_ajax_create_draft() {
     $content  = sanitize_textarea_field( $_POST['content'] ?? '' );
     $subject  = sanitize_text_field( $_POST['subject']     ?? 'AI Draft' );
     $image_url = esc_url_raw( $_POST['image_url']          ?? '' );
+    $image_mode = sanitize_key( $_POST['image_mode'] ?? ( $image_url ? 'link' : 'none' ) );
+    if ( ! in_array( $image_mode, [ 'none', 'link', 'gemini' ], true ) ) $image_mode = 'none';
+    if ( 'gemini' === $image_mode && function_exists('set_time_limit') ) @set_time_limit(180);
     $seo_title = sanitize_text_field( $_POST['seo_title']  ?? '' );
     $seo_meta  = sanitize_text_field( $_POST['seo_meta']   ?? '' );
     $seo_slug  = sanitize_title( $_POST['seo_slug']        ?? '' );
@@ -1035,13 +1054,22 @@ function kaw_ajax_create_draft() {
         update_post_meta($post_id, 'rank_math_description', $seo_meta);
     }
 
-    // Featured image — sideload from URL
-    if ( $image_url ) {
+    // Featured image — use the source URL or generate one with Gemini.
+    $image_error = '';
+    if ( 'link' === $image_mode && $image_url ) {
         $att_id = kaw_sideload_image($image_url, $post_id);
         if ( $att_id && ! is_wp_error($att_id) ) set_post_thumbnail($post_id, $att_id);
+        elseif ( is_wp_error($att_id) ) $image_error = $att_id->get_error_message();
+    } elseif ( 'gemini' === $image_mode ) {
+        $att_id = kaw_generate_featured_image($title, $tagline, $body, $post_id);
+        if ( $att_id && ! is_wp_error($att_id) ) set_post_thumbnail($post_id, $att_id);
+        elseif ( is_wp_error($att_id) ) $image_error = $att_id->get_error_message();
     }
 
-    wp_send_json_success([ 'edit_url' => get_edit_post_link($post_id, 'raw') ]);
+    wp_send_json_success([
+        'edit_url'    => get_edit_post_link($post_id, 'raw'),
+        'image_error' => $image_error,
+    ]);
 }
 
 function kaw_format_draft_body( $body ) {
@@ -1085,6 +1113,82 @@ function kaw_sideload_image( $url, $post_id ) {
     $id = media_handle_sideload($file, $post_id);
     if ( is_wp_error($id) ) { @unlink($tmp); return $id; }
     return $id;
+}
+
+function kaw_generate_featured_image( $title, $tagline, $article, $post_id ) {
+    $api_key = get_option('kaw_key_gemini', '');
+    if ( empty($api_key) ) {
+        return new WP_Error('kaw_missing_gemini_key', 'Add a Gemini API key in AI Writer → Settings to generate a featured image.');
+    }
+
+    $context = wp_trim_words( wp_strip_all_tags($article), 180, '…' );
+    $prompt = "Create a polished, editorial featured image for this article. Use a wide 16:9 landscape composition, strong focal subject, professional photography or editorial illustration, realistic lighting, and clean composition. Do not include text, captions, logos, or visible lettering.\n\n"
+        . 'Headline: ' . sanitize_text_field($title) . "\n"
+        . 'Summary: ' . sanitize_text_field($tagline) . "\n"
+        . 'Article context: ' . sanitize_textarea_field($context);
+
+    $response = wp_remote_post('https://generativelanguage.googleapis.com/v1beta/interactions', [
+        'timeout' => 120,
+        'headers' => [
+            'Content-Type'  => 'application/json',
+            'x-goog-api-key' => $api_key,
+        ],
+        'body' => wp_json_encode([
+            'model'          => 'gemini-3.1-flash-image',
+            'input'          => $prompt,
+            'response_format' => [
+                'type'         => 'image',
+                'mime_type'    => 'image/jpeg',
+                'aspect_ratio' => '16:9',
+                'image_size'   => '1K',
+            ],
+        ]),
+    ]);
+
+    if ( is_wp_error($response) ) return $response;
+
+    $status = wp_remote_retrieve_response_code($response);
+    $data = json_decode(wp_remote_retrieve_body($response), true);
+    if ( $status < 200 || $status >= 300 ) {
+        $message = $data['error']['message'] ?? 'Gemini image generation returned HTTP ' . (int) $status . '.';
+        return new WP_Error('kaw_gemini_image_api', sanitize_text_field($message));
+    }
+
+    $image_data = $data['output_image']['data'] ?? '';
+    $mime_type = $data['output_image']['mime_type'] ?? 'image/jpeg';
+    $extensions = [ 'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp' ];
+    if ( empty($image_data) || ! isset($extensions[$mime_type]) ) {
+        return new WP_Error('kaw_gemini_image_missing', 'Gemini responded without a supported image.');
+    }
+
+    $binary = base64_decode($image_data, true);
+    if ( false === $binary ) return new WP_Error('kaw_gemini_image_decode', 'Could not decode the image returned by Gemini.');
+
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+
+    $tmp = wp_tempnam('kaw-gemini-image');
+    if ( ! $tmp || false === file_put_contents($tmp, $binary) ) {
+        if ( $tmp ) @unlink($tmp);
+        return new WP_Error('kaw_gemini_image_save', 'Could not save the generated image temporarily.');
+    }
+
+    $file = [
+        'name'     => 'ai-featured-image-' . absint($post_id) . '.' . $extensions[$mime_type],
+        'tmp_name' => $tmp,
+        'type'     => $mime_type,
+        'size'     => strlen($binary),
+        'error'    => 0,
+    ];
+    $attachment_id = media_handle_sideload($file, $post_id, sanitize_text_field($title));
+    if ( is_wp_error($attachment_id) ) {
+        @unlink($tmp);
+        return $attachment_id;
+    }
+
+    update_post_meta($attachment_id, '_wp_attachment_image_alt', sanitize_text_field($title));
+    return $attachment_id;
 }
 
 // ── GitHub updates ───────────────────────────────────────────────────────────

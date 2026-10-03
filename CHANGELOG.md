@@ -1,5 +1,11 @@
 # Changelog
 
+## 6.5.0
+
+- Added featured image choices: generate an image with Gemini, use the story link image, or add no image.
+- Save Gemini-generated images in the WordPress media library and set them as the post's featured image.
+- Keep article draft creation successful when the image provider returns an error, and show the image error to the user.
+
 ## 6.4.0
 
 - Save the generated article subheadline to Foxiz's `ruby_tagline` post meta field.

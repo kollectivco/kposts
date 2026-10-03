@@ -87,15 +87,23 @@
     }
 
     function doInsert(data, $btn){
-        $btn.prop('disabled', true).text('Creating draft...');
+        $btn.prop('disabled', true).text(data.image_mode==='gemini' ? 'Generating image & creating draft...' : 'Creating draft...');
+        var draftWindow=data.image_mode==='gemini' ? window.open('about:blank','_blank') : null;
         $.ajax({
             url: KAW.ajax_url, method:'POST',
             data: Object.assign({ action:'kaw_create_draft', nonce:KAW.nonce }, data),
             success: function(res){
-                if(res.success && res.data.edit_url) window.open(res.data.edit_url, '_blank');
-                else alert('Error: '+(res.data||'Could not create draft.'));
+                if(res.success && res.data.edit_url){
+                    if(draftWindow) draftWindow.location=res.data.edit_url;
+                    else window.open(res.data.edit_url, '_blank');
+                    if(res.data.image_error) alert('Draft created, but the featured image could not be added: '+res.data.image_error);
+                }
+                else {
+                    if(draftWindow) draftWindow.close();
+                    alert('Error: '+(res.data||'Could not create draft.'));
+                }
             },
-            error: function(){ alert('Request failed.'); },
+            error: function(){ if(draftWindow) draftWindow.close(); alert('Request failed.'); },
             complete: function(){ $btn.prop('disabled', false).text('Insert to new post \u2197'); },
         });
     }
@@ -143,6 +151,7 @@
                 content: lastArticle,
                 subject: $('#kaw-subject').val().trim(),
                 image_url: '',
+                image_mode: $('#kaw-image-mode').val(),
                 seo_title: lastSeo ? lastSeo.title : '',
                 seo_meta:  lastSeo ? lastSeo.meta  : '',
                 seo_slug:  lastSeo ? lastSeo.slug  : '',
@@ -191,6 +200,7 @@
         $('#kaw-news-list').on('click', '.kaw-news-card', function(){
             var idx=parseInt($(this).data('idx'),10);
             selectedItem=allNews[idx]; fetchedContent=''; fetchedImage=''; lastSeo=null; lastArticle='';
+            $('#kaw-feed-image-mode').val('none').find('option[value="link"]').prop('disabled', true);
             var requestId=++fetchRequestId;
             renderNews();
             $('#kaw-sel-title').text(selectedItem.title);
@@ -210,7 +220,11 @@
                         fetchedContent=res.data.content;
                         fetchedImage=res.data.image||'';
                         $status.attr('class','kaw-fetch-status kaw-fetch-ok').text('Content loaded \u2014 '+res.data.length+' chars. Rewriting from source.');
-                        if(fetchedImage){ $('#kaw-img-tag').attr('src', fetchedImage); $('#kaw-img-preview').show(); }
+                        if(fetchedImage){
+                            $('#kaw-img-tag').attr('src', fetchedImage);
+                            $('#kaw-img-preview').show();
+                            $('#kaw-feed-image-mode').find('option[value="link"]').prop('disabled', false).end().val('link');
+                        }
                     } else {
                         $status.attr('class','kaw-fetch-status kaw-fetch-warn').text('Could not fetch full content \u2014 will write from headline only.');
                     }
@@ -264,11 +278,12 @@
         });
 
         $('#kaw-feed-insert-btn').on('click', function(){
-            var useImg = $('#kaw-use-image').is(':checked');
+            var imageMode = $('#kaw-feed-image-mode').val();
             doInsert({
                 content: lastArticle,
                 subject: selectedItem ? selectedItem.title : 'AI Draft',
-                image_url: (useImg && fetchedImage) ? fetchedImage : '',
+                image_url: (imageMode==='link' && fetchedImage) ? fetchedImage : '',
+                image_mode: imageMode,
                 seo_title: lastSeo ? lastSeo.title : '',
                 seo_meta:  lastSeo ? lastSeo.meta  : '',
                 seo_slug:  lastSeo ? lastSeo.slug  : '',
