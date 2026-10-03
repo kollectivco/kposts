@@ -187,7 +187,7 @@
     }
 
     function initNewsfeed(){
-        var allNews=[], activeFilter='all';
+        var allNews=[], newsErrors=[], activeFilter='all';
         var feedType='News', feedTone='Informative', feedLang='Arabic';
         var selectedItem=null, fetchedContent='', fetchedImage='', lastSeo=null, lastArticle='', fetchRequestId=0;
 
@@ -200,14 +200,18 @@
             $('#kaw-news-list').html('<div class="kaw-skeleton"></div>'.repeat(5));
             $.ajax({
                 url:KAW.ajax_url, method:'POST', data:{ action:'kaw_fetch_news', nonce:KAW.nonce, force: force ? '1' : '' },
-                success:function(res){ if(res.success){ allNews=res.data; renderNews(); } else { $('#kaw-news-list').html('<p style="color:#c0392b;padding:1rem;">Could not load news.</p>'); } },
+                success:function(res){ if(res.success){ allNews=Array.isArray(res.data)?res.data:(res.data.items||[]); newsErrors=Array.isArray(res.data)?[]:(res.data.errors||[]); renderNews(); } else { $('#kaw-news-list').html('<p style="color:#c0392b;padding:1rem;">Could not load news.</p>'); } },
                 error:function(){ $('#kaw-news-list').html('<p style="color:#c0392b;padding:1rem;">Connection failed.</p>'); },
             });
         }
 
         function renderNews(){
             var items = activeFilter==='all' ? allNews : allNews.filter(function(n){ return n.source===activeFilter; });
-            if(!items.length){ $('#kaw-news-list').html('<p style="padding:1rem;color:#aaa;">No stories found.</p>'); return; }
+            if(!items.length){
+                $('#kaw-news-list').html('<p style="padding:1rem;color:#aaa;">No stories found.</p>');
+                renderSourceErrors();
+                return;
+            }
             var html='';
             items.forEach(function(item){
                 var idx=allNews.indexOf(item);
@@ -217,10 +221,23 @@
                         '<div class="kaw-card-meta"><span class="kaw-src-tag">'+item.label+'</span></div></div>';
             });
             $('#kaw-news-list').html(html);
+            renderSourceErrors();
             $('#kaw-news-list .kaw-news-card').attr({ role:'button', tabindex:'0' }).each(function(){
                 var item=allNews[parseInt($(this).data('idx'),10)];
                 $(this).attr('aria-pressed', selectedItem&&item&&selectedItem.url===item.url ? 'true' : 'false');
             });
+        }
+
+        function renderSourceErrors(){
+            var visibleErrors=activeFilter==='all'?newsErrors:newsErrors.filter(function(error){ return error.source===activeFilter; });
+            if(!visibleErrors.length) return;
+            var $box=$('<div>').css({margin:'12px 8px',padding:'10px 12px',border:'1px solid #f0c7a8',borderRadius:'6px',background:'#fff8f2',color:'#8a4b20',fontSize:'13px'});
+            visibleErrors.forEach(function(error){
+                var label=error.label||'Source';
+                var message=error.message||'Could not fetch this source.';
+                $('<div>').text(label+': '+message).css({margin:'3px 0'}).appendTo($box);
+            });
+            $('#kaw-news-list').append($box);
         }
 
         $('#kaw-news-list').on('click', '.kaw-news-card', function(){

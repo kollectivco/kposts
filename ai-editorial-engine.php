@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), manageable news sources, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     7.0.0
+ * Version:     7.1.0
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '7.0.0' );
+define( 'KAW_VERSION', '7.1.0' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -129,11 +129,41 @@ function kaw_sources() {
 function kaw_clear_news_cache( $source_key = '' ) {
     if ( $source_key !== '' ) {
         delete_transient( 'kaw_news_' . $source_key );
+        delete_transient( 'kaw_news_error_' . $source_key );
         return;
     }
     foreach ( array_keys( kaw_all_sources() ) as $key ) {
         delete_transient( 'kaw_news_' . $key );
+        delete_transient( 'kaw_news_error_' . $key );
     }
+}
+
+function kaw_source_link_xpath( $src ) {
+    $selector = trim( $src['link'] ?? '' );
+    $old_default = '//article//h2/a | //article//h3/a | //h2/a | //h3/a | //a[contains(@class,"title")]';
+    $host = strtolower( preg_replace( '/^www\./i', '', $src['host'] ?? wp_parse_url( $src['feed'] ?? '', PHP_URL_HOST ) ) );
+
+    // These sites use article-card anchors without the heading structure used by most themes.
+    if ( $selector === '' || $selector === $old_default ) {
+        if ( $host === 'almasryalyoum.com' ) {
+            return '//a[contains(@href,"/news/details/")]';
+        }
+        if ( $host === 'yallakora.com' ) {
+            return '//a[contains(@href,"/egyptian-league/") and contains(@href,"/news/")]';
+        }
+        return '//article//h2/a | //article//h3/a | //h1/a | //h2/a | //h3/a | //h4/a | //a[contains(@class,"title")] | //a[contains(@href,"/news/")] | //a[contains(@href,"/article/")]';
+    }
+
+    return $selector;
+}
+
+function kaw_source_feed_url( $src ) {
+    $feed = preg_replace( '/#.*$/', '', $src['feed'] ?? '' );
+    $host = strtolower( preg_replace( '/^www\./i', '', $src['host'] ?? wp_parse_url( $feed, PHP_URL_HOST ) ) );
+    if ( $host === 'almasryalyoum.com' && preg_match( '#^/section/index/(\d+)/?$#', wp_parse_url( $feed, PHP_URL_PATH ) ?? '', $match ) ) {
+        return 'https://www.almasryalyoum.com/rss/rssfeed?sectionId=' . absint( $match[1] );
+    }
+    return $feed;
 }
 
 function kaw_allowed_hosts() {
@@ -285,11 +315,8 @@ function kaw_handle_save_sources() {
         if ( $label === '' || ! $feed || ! $parts || empty( $parts['scheme'] ) || ! in_array( strtolower( $parts['scheme'] ), [ 'http', 'https' ], true ) || $host === '' || ! preg_match( '/^[a-z0-9.-]+$/', $host ) || ! wp_http_validate_url( $feed ) ) {
             $notice = 'invalid';
         } else {
-            if ( $xpath === '' ) {
-                $xpath = '//article//h2/a | //article//h3/a | //h2/a | //h3/a | //a[contains(@class,"title")]';
-            }
-            $xpath_valid = false;
-            if ( class_exists( 'DOMDocument' ) && class_exists( 'DOMXPath' ) ) {
+            $xpath_valid = $xpath === '';
+            if ( $xpath !== '' && class_exists( 'DOMDocument' ) && class_exists( 'DOMXPath' ) ) {
                 $previous = libxml_use_internal_errors( true );
                 $document = new DOMDocument();
                 $document->loadHTML( '<html><body></body></html>' );
@@ -730,6 +757,7 @@ function kaw_ajax_fetch_news() {
     }
 
     $all    = [];
+    $errors = [];
     $to_net = [];
 
     // Serve from cache first (15 min) unless force-refresh
@@ -737,6 +765,8 @@ function kaw_ajax_fetch_news() {
         $cached = get_transient( 'kaw_news_' . $key );
         if ( ! $force && $cached !== false ) {
             $all = array_merge( $all, $cached );
+            $cached_error = get_transient( 'kaw_news_error_' . $key );
+            if ( $cached_error ) $errors[$key] = [ 'source' => $key, 'label' => $src['label'], 'message' => $cached_error ];
         } else {
             $to_net[$key] = $src;
         }
@@ -747,7 +777,7 @@ function kaw_ajax_fetch_news() {
         $requests = [];
         foreach ( $to_net as $key => $src ) {
             $requests[$key] = [
-                'url'     => $src['feed'],
+                'url'     => kaw_source_feed_url( $src ),
                 'type'    => 'GET',
                 'headers' => [ 'User-Agent' => 'Mozilla/5.0 (compatible; KontentainmentBot/5.0)' ],
             ];
@@ -764,36 +794,76 @@ function kaw_ajax_fetch_news() {
         } else {
             // Fallback: sequential with short timeout
             foreach ( $to_net as $key => $src ) {
-                $r = wp_remote_get( $src['feed'], [ 'timeout' => 8, 'user-agent' => 'Mozilla/5.0 (compatible; KontentainmentBot/5.0)' ] );
-                $responses[$key] = is_wp_error($r) ? null : (object) [ 'body' => wp_remote_retrieve_body($r) ];
+                $r = wp_remote_get( kaw_source_feed_url( $src ), [ 'timeout' => 8, 'user-agent' => 'Mozilla/5.0 (compatible; KontentainmentBot/5.0)' ] );
+                $responses[$key] = is_wp_error($r) ? $r : (object) [ 'body' => wp_remote_retrieve_body($r), 'status_code' => wp_remote_retrieve_response_code($r) ];
             }
         }
 
         foreach ( $to_net as $key => $src ) {
             $resp = $responses[$key] ?? null;
-            if ( ! $resp || empty($resp->body) ) { set_transient('kaw_news_' . $key, [], 300); continue; }
+            if ( is_wp_error( $resp ) ) {
+                $message = $resp->get_error_message();
+                set_transient( 'kaw_news_' . $key, [], 300 );
+                set_transient( 'kaw_news_error_' . $key, $message, 300 );
+                $errors[$key] = [ 'source' => $key, 'label' => $src['label'], 'message' => $message ];
+                continue;
+            }
+            $status = isset( $resp->status_code ) ? (int) $resp->status_code : 0;
+            if ( ! $resp || empty( $resp->body ) || ( $status && ( $status < 200 || $status >= 400 ) ) ) {
+                $message = $status ? sprintf( 'The site returned HTTP %d.', $status ) : 'The site returned an empty response.';
+                if ( $status === 403 ) $message .= ' It may be blocking requests from the WordPress server.';
+                set_transient( 'kaw_news_' . $key, [], 300 );
+                set_transient( 'kaw_news_error_' . $key, $message, 300 );
+                $errors[$key] = [ 'source' => $key, 'label' => $src['label'], 'message' => $message ];
+                continue;
+            }
             $items = kaw_parse_news( $resp->body, $key, $src );
             set_transient( 'kaw_news_' . $key, $items, 900 ); // cache 15 min
+            if ( empty( $items ) ) {
+                $message = 'No article links were found. Try a site-specific XPath selector.';
+                set_transient( 'kaw_news_error_' . $key, $message, 900 );
+                $errors[$key] = [ 'source' => $key, 'label' => $src['label'], 'message' => $message ];
+            } else {
+                delete_transient( 'kaw_news_error_' . $key );
+            }
             $all = array_merge( $all, $items );
         }
     }
 
-    wp_send_json_success( $all );
+    wp_send_json_success( [ 'items' => $all, 'errors' => array_values( $errors ) ] );
 }
 
 function kaw_parse_news( $html, $source, $src ) {
-    libxml_use_internal_errors(true);
     $doc = new DOMDocument();
-    $doc->loadHTML( mb_convert_encoding( $html, 'HTML-ENTITIES', 'UTF-8' ) );
+    $is_rss = preg_match( '/<(?:rss|feed)\b/i', substr( $html, 0, 600 ) );
+    $previous = libxml_use_internal_errors( true );
+    if ( $is_rss ) {
+        $loaded = $doc->loadXML( $html, LIBXML_NONET | LIBXML_NOCDATA );
+    } else {
+        $loaded = $doc->loadHTML( mb_convert_encoding( $html, 'HTML-ENTITIES', 'UTF-8' ) );
+    }
     libxml_clear_errors();
+    libxml_use_internal_errors( $previous );
+    if ( ! $loaded ) return [];
     $xpath = new DOMXPath($doc);
 
-    $nodes = $xpath->query( $src['link'] ?: '//h2/a | //h3/a' );
+    $links = [];
+    if ( $is_rss ) {
+        foreach ( $xpath->query( '//item' ) as $item ) {
+            $title_node = $xpath->query( './title', $item )->item( 0 );
+            $url_node   = $xpath->query( './link', $item )->item( 0 );
+            if ( $title_node && $url_node ) $links[] = [ 'title' => $title_node->textContent, 'href' => $url_node->textContent ];
+        }
+    } else {
+        $nodes = $xpath->query( kaw_source_link_xpath( $src ) );
+        if ( $nodes ) foreach ( $nodes as $node ) $links[] = [ 'title' => $node->textContent, 'href' => $node->getAttribute( 'href' ) ];
+    }
+
     $items = []; $seen = [];
 
-    if ( $nodes ) foreach ( $nodes as $node ) {
-        $title = trim( preg_replace('/\s+/', ' ', $node->textContent) );
-        $href  = $node->getAttribute('href');
+    foreach ( $links as $link ) {
+        $title = trim( preg_replace('/\s+/', ' ', $link['title']) );
+        $href  = preg_replace( '/#.*$/', '', trim( $link['href'] ) );
         if ( mb_strlen($title) < 12 || mb_strlen($title) > 200 ) continue;
         if ( empty($href) || $href === '#' ) continue;
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 7.1.0
+
+- Detect article links on Almasry Alyoum and Yallakora pages when a custom source uses the default selector.
+- Use Almasry Alyoum's official RSS endpoint for section pages that block direct HTML requests.
+- Broaden the generic source selector for article cards that do not wrap links in heading tags.
+- Show per-source HTTP and parsing errors in the News Feed instead of silently showing an empty list.
+
 ## 7.0.0
 
 - Added a Sources tab in Settings to enable, remove, and manage News Feed sources.
