@@ -1,5 +1,11 @@
 # Changelog
 
+## 6.8.0
+
+- Read generated image bytes from the Gemini REST API's `steps` response format.
+- Set the current Interactions API revision explicitly for image generation.
+- Retry temporary Gemini image generation errors with exponential backoff.
+
 ## 6.7.0
 
 - Use exponential backoff with jitter for Gemini transient errors, retrying up to four times.

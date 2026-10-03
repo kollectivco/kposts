@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), 12-source news feed, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     6.7.0
+ * Version:     6.8.0
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '6.7.0' );
+define( 'KAW_VERSION', '6.8.0' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -1166,11 +1166,12 @@ function kaw_generate_featured_image( $title, $tagline, $article, $post_id ) {
         . 'Summary: ' . sanitize_text_field($tagline) . "\n"
         . 'Article context: ' . sanitize_textarea_field($context);
 
-    $response = wp_remote_post('https://generativelanguage.googleapis.com/v1beta/interactions', [
+    $request_args = [
         'timeout' => 120,
         'headers' => [
             'Content-Type'  => 'application/json',
             'x-goog-api-key' => $api_key,
+            'Api-Revision'   => '2026-05-20',
         ],
         'body' => wp_json_encode([
             'model'          => 'gemini-3.1-flash-image',
@@ -1182,9 +1183,17 @@ function kaw_generate_featured_image( $title, $tagline, $article, $post_id ) {
                 'image_size'   => '1K',
             ],
         ]),
-    ]);
+    ];
 
-    if ( is_wp_error($response) ) return $response;
+    $max_attempts = 5;
+    for ( $attempt = 1; $attempt <= $max_attempts; $attempt++ ) {
+        $response = wp_remote_post('https://generativelanguage.googleapis.com/v1beta/interactions', $request_args);
+        if ( is_wp_error($response) ) return $response;
+        $status = wp_remote_retrieve_response_code($response);
+        if ( $attempt === $max_attempts || ! in_array($status, [ 408, 429, 500, 502, 503, 504 ], true) ) break;
+        $delay_ms = ( (int) pow(2, $attempt - 1) * 1000 ) + mt_rand(100, 1000);
+        usleep($delay_ms * 1000);
+    }
 
     $status = wp_remote_retrieve_response_code($response);
     $data = json_decode(wp_remote_retrieve_body($response), true);
@@ -1193,8 +1202,21 @@ function kaw_generate_featured_image( $title, $tagline, $article, $post_id ) {
         return new WP_Error('kaw_gemini_image_api', sanitize_text_field($message));
     }
 
-    $image_data = $data['output_image']['data'] ?? '';
-    $mime_type = $data['output_image']['mime_type'] ?? 'image/jpeg';
+    $interaction = $data['interaction'] ?? $data;
+    $image_data = $interaction['output_image']['data'] ?? '';
+    $mime_type = $interaction['output_image']['mime_type'] ?? 'image/jpeg';
+
+    // output_image is SDK convenience syntax; REST responses expose image blocks in steps[].
+    if ( empty($image_data) && ! empty($interaction['steps']) && is_array($interaction['steps']) ) {
+        foreach ( $interaction['steps'] as $step ) {
+            if ( ( $step['type'] ?? '' ) !== 'model_output' || empty($step['content']) || ! is_array($step['content']) ) continue;
+            foreach ( $step['content'] as $content ) {
+                if ( ( $content['type'] ?? '' ) !== 'image' || empty($content['data']) ) continue;
+                $image_data = $content['data'];
+                $mime_type = $content['mime_type'] ?? $mime_type;
+            }
+        }
+    }
     $extensions = [ 'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp' ];
     if ( empty($image_data) || ! isset($extensions[$mime_type]) ) {
         return new WP_Error('kaw_gemini_image_missing', 'Gemini responded without a supported image.');
