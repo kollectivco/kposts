@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), 12-source news feed, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     6.3.0
+ * Version:     6.4.0
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '6.3.0' );
+define( 'KAW_VERSION', '6.4.0' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -1001,7 +1001,9 @@ function kaw_ajax_create_draft() {
 
     $lines = explode("\n", trim($content));
     $title = ! empty($lines[0]) ? wp_strip_all_tags($lines[0]) : $subject;
-    $body  = implode("\n", array_slice($lines, 1));
+    $has_tagline = isset($lines[1], $lines[2]) && trim($lines[1]) !== '' && trim($lines[2]) === '';
+    $tagline = $has_tagline ? sanitize_text_field($lines[1]) : '';
+    $body  = implode("\n", array_slice($lines, $has_tagline ? 2 : 1));
 
     $postarr = [
         'post_title'   => $title,
@@ -1013,6 +1015,9 @@ function kaw_ajax_create_draft() {
 
     $post_id = wp_insert_post($postarr);
     if ( is_wp_error($post_id) ) wp_send_json_error( $post_id->get_error_message() );
+
+    // Foxiz reads the single-post tagline from the ruby_tagline post meta field.
+    if ( $tagline ) update_post_meta($post_id, 'ruby_tagline', $tagline);
 
     // Tags
     if ( $seo_tags ) {

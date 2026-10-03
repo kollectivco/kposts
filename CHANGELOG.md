@@ -1,5 +1,10 @@
 # Changelog
 
+## 6.4.0
+
+- Save the generated article subheadline to Foxiz's `ruby_tagline` post meta field.
+- Keep the tagline separate from the article body when creating WordPress drafts.
+
 ## 6.3.0
 
 - Generated articles now include concise section headings for easier scanning.
