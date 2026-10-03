@@ -1,5 +1,11 @@
 # Changelog
 
+## 6.2.1
+
+- Updated the Gemini default to the supported Gemini 3.8 Flash model.
+- Automatically migrated the retired Gemini 2.0 Flash setting.
+- Added an actionable error message for Gemini model or endpoint 404 responses.
+
 ## 6.2.0
 
 - Added server-side permission checks and validation for article generation inputs.

@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), 12-source news feed, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     6.2.0
+ * Version:     6.2.1
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '6.2.0' );
+define( 'KAW_VERSION', '6.2.1' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -132,7 +132,7 @@ function kaw_providers() {
         'gemini' => [
             'label'   => 'Gemini (Google)',
             'endpoint'=> 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-            'model'   => 'gemini-2.0-flash',
+            'model'   => 'gemini-3.8-flash',
             'optkey'  => 'kaw_key_gemini',
             'format'  => 'openai',
         ],
@@ -167,6 +167,19 @@ function kaw_providers() {
     ];
 }
 
+function kaw_saved_provider_model( $provider_key, $provider ) {
+    $option_name = $provider['optkey'] . '_model';
+    $model = get_option($option_name, $provider['model']);
+
+    // Gemini 2.0 Flash was shut down; replace only this known retired default.
+    if ( $provider_key === 'gemini' && $model === 'gemini-2.0-flash' ) {
+        $model = $provider['model'];
+        update_option($option_name, $model);
+    }
+
+    return $model;
+}
+
 // Resolve the active provider with key + model filled in
 function kaw_active_provider() {
     $providers = kaw_providers();
@@ -175,7 +188,7 @@ function kaw_active_provider() {
     $p = $providers[$key];
     $p['key']   = get_option($p['optkey'], '');
     if ( $key === 'claude' && empty($p['key']) ) $p['key'] = get_option('kaw_api_key', '');
-    $p['model'] = get_option($p['optkey'] . '_model', $p['model']);
+    $p['model'] = kaw_saved_provider_model($key, $p);
     $p['pkey']  = $key;
     return $p;
 }
@@ -246,7 +259,7 @@ function kaw_render_settings_page() {
             <table class="form-table">
                 <?php foreach ( $providers as $pkey => $p ) :
                     $key   = get_option($p['optkey'], '');
-                    $model = get_option($p['optkey'].'_model', $p['model']);
+                    $model = kaw_saved_provider_model($pkey, $p);
                 ?>
                 <tr>
                     <th>
@@ -934,12 +947,27 @@ function kaw_decode_provider_response( $response, $provider ) {
     $body   = json_decode($raw, true);
 
     if ( ! is_array($body) ) {
+        if ( $status === 404 && ($provider['pkey'] ?? '') === 'gemini' ) {
+            return new WP_Error('api_http', sprintf(
+                'Gemini model "%s" or endpoint was not found. Check the model in AI Writer → Settings.',
+                $provider['model']
+            ));
+        }
         return new WP_Error('api_response', $provider['label'] . ' returned an unreadable response.');
     }
 
     if ( $status < 200 || $status >= 300 || ! empty($body['error']) ) {
         $error = $body['error'] ?? [];
         $message = is_array($error) ? ($error['message'] ?? '') : (string) $error;
+        if ( $message === '' && ! empty($body['message']) && is_string($body['message']) ) {
+            $message = $body['message'];
+        }
+        if ( $message === '' && $status === 404 && ($provider['pkey'] ?? '') === 'gemini' ) {
+            $message = sprintf(
+                'Gemini model "%s" or endpoint was not found. Check the model in AI Writer → Settings.',
+                $provider['model']
+            );
+        }
         if ( $message === '' ) $message = $provider['label'] . ' returned HTTP ' . (int) $status . '.';
         return new WP_Error('api_http', $message);
     }
