@@ -2,20 +2,20 @@
 /**
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
- * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), 12-source news feed, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     6.9.0
+ * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), manageable news sources, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
+ * Version:     7.0.0
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '6.9.0' );
+define( 'KAW_VERSION', '7.0.0' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
 // ── Source registry ─────────────────────────────────────────────────────────
-function kaw_sources() {
+function kaw_default_sources() {
     return [
         'billboard' => [
             'label' => 'Billboard Arabia',
@@ -102,6 +102,38 @@ function kaw_sources() {
             'link'  => '//h2/a | //h3/a | //h4/a | //article//a | //a[contains(@class,"title")] | //a[contains(@class,"card")]',
         ],
     ];
+}
+
+function kaw_all_sources() {
+    $sources = kaw_default_sources();
+    $custom  = get_option( 'kaw_custom_sources', [] );
+    if ( is_array( $custom ) ) {
+        foreach ( $custom as $key => $source ) {
+            if ( is_array( $source ) && ! isset( $sources[$key] ) ) {
+                $sources[$key] = $source;
+            }
+        }
+    }
+    return $sources;
+}
+
+function kaw_sources() {
+    $sources  = kaw_all_sources();
+    $disabled = get_option( 'kaw_disabled_sources', [] );
+    foreach ( (array) $disabled as $key ) {
+        unset( $sources[$key] );
+    }
+    return $sources;
+}
+
+function kaw_clear_news_cache( $source_key = '' ) {
+    if ( $source_key !== '' ) {
+        delete_transient( 'kaw_news_' . $source_key );
+        return;
+    }
+    foreach ( array_keys( kaw_all_sources() ) as $key ) {
+        delete_transient( 'kaw_news_' . $key );
+    }
 }
 
 function kaw_allowed_hosts() {
@@ -218,6 +250,80 @@ add_action( 'admin_init', function () {
     }
 });
 
+add_action( 'admin_post_kaw_save_sources', 'kaw_handle_save_sources' );
+
+function kaw_handle_save_sources() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You are not allowed to manage news sources.', 'kaw' ) );
+    }
+    check_admin_referer( 'kaw_save_sources' );
+
+    $all_sources = kaw_all_sources();
+    $custom      = get_option( 'kaw_custom_sources', [] );
+    $custom      = is_array( $custom ) ? $custom : [];
+    $disabled    = get_option( 'kaw_disabled_sources', [] );
+    $disabled    = array_values( array_intersect( (array) $disabled, array_keys( $all_sources ) ) );
+    $notice      = 'saved';
+
+    if ( isset( $_POST['remove_source'] ) ) {
+        $key = sanitize_key( wp_unslash( $_POST['remove_source'] ) );
+        if ( isset( $custom[$key] ) ) {
+            unset( $custom[$key] );
+            update_option( 'kaw_custom_sources', $custom );
+        } elseif ( isset( kaw_default_sources()[$key] ) && ! in_array( $key, $disabled, true ) ) {
+            $disabled[] = $key;
+        }
+        kaw_clear_news_cache( $key );
+        $notice = 'removed';
+    } elseif ( isset( $_POST['add_source'] ) ) {
+        $label = sanitize_text_field( wp_unslash( $_POST['source_name'] ?? '' ) );
+        $feed  = esc_url_raw( trim( wp_unslash( $_POST['source_url'] ?? '' ) ) );
+        $xpath = trim( wp_unslash( $_POST['source_xpath'] ?? '' ) );
+        $parts = wp_parse_url( $feed );
+        $host  = isset( $parts['host'] ) ? strtolower( preg_replace( '/^www\./i', '', $parts['host'] ) ) : '';
+
+        if ( $label === '' || ! $feed || ! $parts || empty( $parts['scheme'] ) || ! in_array( strtolower( $parts['scheme'] ), [ 'http', 'https' ], true ) || $host === '' || ! preg_match( '/^[a-z0-9.-]+$/', $host ) || ! wp_http_validate_url( $feed ) ) {
+            $notice = 'invalid';
+        } else {
+            if ( $xpath === '' ) {
+                $xpath = '//article//h2/a | //article//h3/a | //h2/a | //h3/a | //a[contains(@class,"title")]';
+            }
+            $xpath_valid = false;
+            if ( class_exists( 'DOMDocument' ) && class_exists( 'DOMXPath' ) ) {
+                $previous = libxml_use_internal_errors( true );
+                $document = new DOMDocument();
+                $document->loadHTML( '<html><body></body></html>' );
+                $xpath_valid = ( new DOMXPath( $document ) )->query( $xpath ) !== false;
+                libxml_clear_errors();
+                libxml_use_internal_errors( $previous );
+            }
+            if ( ! $xpath_valid ) {
+                $notice = 'invalid_xpath';
+            } else {
+                $base = strtolower( $parts['scheme'] ) . '://' . $parts['host'];
+                $slug = sanitize_title( $label );
+                $slug = $slug !== '' ? $slug : 'source';
+                $key  = 'custom_' . $slug;
+                $suffix = 2;
+                while ( isset( $all_sources[$key] ) ) {
+                    $key = 'custom_' . $slug . '-' . $suffix++;
+                }
+                $custom[$key] = [ 'label' => $label, 'base' => $base, 'feed' => $feed, 'host' => $host, 'link' => $xpath ];
+                update_option( 'kaw_custom_sources', $custom );
+                $notice = 'added';
+            }
+        }
+    } else {
+        $enabled = isset( $_POST['active_sources'] ) ? array_map( 'sanitize_key', (array) wp_unslash( $_POST['active_sources'] ) ) : [];
+        $disabled = array_values( array_diff( array_keys( $all_sources ), $enabled ) );
+    }
+
+    update_option( 'kaw_disabled_sources', array_values( array_unique( $disabled ) ) );
+    kaw_clear_news_cache();
+    wp_safe_redirect( add_query_arg( [ 'page' => 'kaw-settings', 'tab' => 'sources', 'kaw_sources_notice' => $notice ], admin_url( 'admin.php' ) ) );
+    exit;
+}
+
 function kaw_render_settings_page() {
     $providers = kaw_providers();
     $default   = get_option('kaw_default_provider', 'claude');
@@ -234,9 +340,15 @@ function kaw_render_settings_page() {
         'qwen'     => 'modelstudio.console.alibabacloud.com',
         'poe'      => 'poe.com/api_key',
     ];
+    $current_tab = isset( $_GET['tab'] ) && sanitize_key( wp_unslash( $_GET['tab'] ) ) === 'sources' ? 'sources' : 'providers';
     ?>
     <div class="wrap">
         <h1>AI Writer — Settings</h1>
+        <nav class="nav-tab-wrapper" aria-label="Settings sections">
+            <a class="nav-tab <?php echo $current_tab === 'providers' ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( admin_url( 'admin.php?page=kaw-settings&tab=providers' ) ); ?>">AI Providers</a>
+            <a class="nav-tab <?php echo $current_tab === 'sources' ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( admin_url( 'admin.php?page=kaw-settings&tab=sources' ) ); ?>">Sources</a>
+        </nav>
+        <?php if ( $current_tab === 'sources' ) : kaw_render_sources_settings(); return; endif; ?>
         <form method="post" action="options.php">
             <?php settings_fields( 'kaw_settings_group' ); ?>
 
@@ -283,6 +395,58 @@ function kaw_render_settings_page() {
             <?php submit_button( 'Save Settings' ); ?>
         </form>
     </div>
+<?php }
+
+function kaw_render_sources_settings() {
+    $all_sources = kaw_all_sources();
+    $disabled    = (array) get_option( 'kaw_disabled_sources', [] );
+    $notices = [
+        'added'       => [ 'success', 'Source added successfully.' ],
+        'removed'     => [ 'success', 'Source removed from the news feed.' ],
+        'saved'       => [ 'success', 'Source settings saved.' ],
+        'invalid'     => [ 'error', 'Enter a source name and a valid public http or https URL.' ],
+        'invalid_xpath' => [ 'error', 'The XPath selector is invalid. Check the expression or leave it blank to use the default.' ],
+    ];
+    $notice_key = isset( $_GET['kaw_sources_notice'] ) ? sanitize_key( wp_unslash( $_GET['kaw_sources_notice'] ) ) : '';
+    if ( isset( $notices[$notice_key] ) ) : ?>
+        <div class="notice notice-<?php echo esc_attr( $notices[$notice_key][0] ); ?> is-dismissible"><p><?php echo esc_html( $notices[$notice_key][1] ); ?></p></div>
+    <?php endif; ?>
+
+    <h2>News sources</h2>
+    <p>Enable the sources you want to see in the News Feed. You can remove a built-in source from the feed or permanently delete a custom source.</p>
+    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+        <input type="hidden" name="action" value="kaw_save_sources">
+        <?php wp_nonce_field( 'kaw_save_sources' ); ?>
+        <table class="widefat striped" style="max-width:1000px;">
+            <thead><tr><th>Source</th><th>Listing page</th><th>Show in feed</th><th>Action</th></tr></thead>
+            <tbody>
+            <?php foreach ( $all_sources as $key => $source ) : $is_custom = strpos( $key, 'custom_' ) === 0; ?>
+                <tr>
+                    <td><strong><?php echo esc_html( $source['label'] ); ?></strong><?php echo $is_custom ? ' <span class="description">Custom</span>' : ''; ?></td>
+                    <td><a href="<?php echo esc_url( $source['feed'] ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $source['feed'] ); ?></a></td>
+                    <td><label><input type="checkbox" name="active_sources[]" value="<?php echo esc_attr( $key ); ?>" <?php checked( ! in_array( $key, $disabled, true ) ); ?>> Enabled</label></td>
+                    <td><button type="submit" class="button" name="remove_source" value="<?php echo esc_attr( $key ); ?>" onclick="return confirm('Remove this source from the news feed?');"><?php echo $is_custom ? 'Delete' : 'Remove'; ?></button></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <p><button type="submit" class="button button-primary" style="margin-top:12px;">Save source settings</button></p>
+    </form>
+
+    <hr style="max-width:1000px;margin:28px 0;">
+    <h2>Add a source</h2>
+    <p>Enter a public page that lists articles. The default link selector works for many sites; an optional XPath can target article links more precisely.</p>
+    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+        <input type="hidden" name="action" value="kaw_save_sources">
+        <input type="hidden" name="add_source" value="1">
+        <?php wp_nonce_field( 'kaw_save_sources' ); ?>
+        <table class="form-table" style="max-width:1000px;">
+            <tr><th><label for="kaw-source-name">Source name</label></th><td><input id="kaw-source-name" name="source_name" type="text" class="regular-text" required placeholder="Example: Cairo News"></td></tr>
+            <tr><th><label for="kaw-source-url">Listing page URL</label></th><td><input id="kaw-source-url" name="source_url" type="url" class="large-text" required placeholder="https://example.com/news/"></td></tr>
+            <tr><th><label for="kaw-source-xpath">Article links XPath</label></th><td><textarea id="kaw-source-xpath" name="source_xpath" class="large-text code" rows="3" placeholder="Leave blank to use the default selector"></textarea><p class="description">Optional. Example: <code>//article//h2/a | //article//h3/a</code></p></td></tr>
+        </table>
+        <?php submit_button( 'Add source', 'secondary' ); ?>
+    </form>
 <?php }
 
 // ── Enqueue assets ────────────────────────────────────────────────────────────

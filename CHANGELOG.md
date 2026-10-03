@@ -1,5 +1,11 @@
 # Changelog
 
+## 7.0.0
+
+- Added a Sources tab in Settings to enable, remove, and manage News Feed sources.
+- Added custom source setup with a listing page URL and optional XPath link selector.
+- Included enabled custom sources in the News Feed filters and article-source allowlist.
+
 ## 6.9.0
 
 - Require explicit, separate `TITLE:` and `TAGLINE:` lines so headlines stay separate from article paragraphs.
