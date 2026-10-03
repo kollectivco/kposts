@@ -1,5 +1,10 @@
 # Changelog
 
+## 6.9.0
+
+- Require explicit, separate `TITLE:` and `TAGLINE:` lines so headlines stay separate from article paragraphs.
+- Parse the title and tagline independently for Foxiz and WordPress drafts while hiding internal labels in preview and copy.
+
 ## 6.8.0
 
 - Read generated image bytes from the Gemini REST API's `steps` response format.

@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), 12-source news feed, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     6.8.0
+ * Version:     6.9.0
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '6.8.0' );
+define( 'KAW_VERSION', '6.9.0' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -819,7 +819,7 @@ STRICT ACCURACY RULES:
 - Do NOT add facts, statistics, quotes, names, or details not in the source.
 - Do NOT hallucinate or invent any information.
 - Rewrite the content in Kontentainment's voice and style.
-- Start with a strong headline on the first line and a concise subheadline on the second line. Put a blank line after the subheadline, then start the article body.
+- Start with exactly these two standalone lines and nothing else on either line: `TITLE: <headline>` then `TAGLINE: <concise subheadline>`. Put a blank line after the tagline, then start the article body. Never append article text to the title or tagline line.
 - Divide the body into clear, logical sections. Put a short, descriptive section heading on its own line before each major section, using exactly `## Heading` syntax. Do not add a heading to every paragraph.
 - Use natural paragraph breaks. Do not use bold (**), and do not prefix the headline or subheadline with Markdown symbols.
 - Be specific and direct. No filler.
@@ -1034,9 +1034,18 @@ function kaw_ajax_create_draft() {
     if ( empty($content) ) wp_send_json_error('No content to insert.');
 
     $lines = explode("\n", trim($content));
-    $title = ! empty($lines[0]) ? wp_strip_all_tags($lines[0]) : $subject;
-    $has_tagline = isset($lines[1]) && trim($lines[1]) !== '';
-    $tagline = $has_tagline ? sanitize_text_field($lines[1]) : '';
+    $title_line = trim($lines[0] ?? '');
+    $tagline_line = trim($lines[1] ?? '');
+    $title_marked = preg_match('/^TITLE:\s*(.+?)\s*$/iu', $title_line, $title_match);
+    if ( $title_marked ) {
+        $title = wp_strip_all_tags($title_match[1]);
+        $has_tagline = preg_match('/^TAGLINE:\s*(.+?)\s*$/iu', $tagline_line, $tagline_match);
+        $tagline = $has_tagline ? sanitize_text_field($tagline_match[1]) : '';
+    } else {
+        $title = $title_line ? wp_strip_all_tags($title_line) : $subject;
+        $has_tagline = $tagline_line !== '';
+        $tagline = $has_tagline ? sanitize_text_field($tagline_line) : '';
+    }
     $body  = implode("\n", array_slice($lines, $has_tagline ? 2 : 1));
 
     $postarr = [

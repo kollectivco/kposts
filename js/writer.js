@@ -2,7 +2,14 @@
 (function ($) {
     'use strict';
 
-    function countWords(s){ return s.replace(/^##\s+/gm,'').split(/\s+/).filter(Boolean).length; }
+    function cleanArticleLabels(s){
+        var lines=(s||'').split(/\r?\n/);
+        if(lines[0]) lines[0]=lines[0].replace(/^\s*TITLE:\s*/i,'');
+        if(lines[1]) lines[1]=lines[1].replace(/^\s*TAGLINE:\s*/i,'');
+        return lines.join('\n').trim();
+    }
+
+    function countWords(s){ return cleanArticleLabels(s).replace(/^##\s+/gm,'').split(/\s+/).filter(Boolean).length; }
 
     function arabicDigits(value){
         var digits='٠١٢٣٤٥٦٧٨٩';
@@ -20,11 +27,11 @@
         return seo;
     }
 
-    function plainArticle(s){ return (s||'').replace(/^##\s+/gm,'').trim(); }
+    function plainArticle(s){ return cleanArticleLabels(s).replace(/^##\s+/gm,'').trim(); }
 
     function renderArticle($el, article){
         var esc=function(value){ return $('<div>').text(value||'').html(); };
-        var blocks=(article||'').trim().split(/\n\s*\n/).filter(Boolean);
+        var blocks=cleanArticleLabels(article).split(/\n\s*\n/).filter(Boolean);
         var html=[];
 
         blocks.forEach(function(block, index){
