@@ -1,5 +1,10 @@
 # Changelog
 
+## 6.7.0
+
+- Use exponential backoff with jitter for Gemini transient errors, retrying up to four times.
+- Explain persistent Gemini HTTP 503 errors as temporary service overloads.
+
 ## 6.6.0
 
 - Save Foxiz taglines in both the theme's `rb_global_meta` field and its `ruby_tagline` compatibility field.

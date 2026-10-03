@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), 12-source news feed, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     6.6.0
+ * Version:     6.7.0
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '6.6.0' );
+define( 'KAW_VERSION', '6.7.0' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -953,12 +953,13 @@ function kaw_call_provider( $provider, $system, $user, $max_tokens = 8192 ) {
         ]),
     ];
 
-    $max_attempts = ( $provider['pkey'] ?? '' ) === 'gemini' ? 3 : 1;
+    $max_attempts = ( $provider['pkey'] ?? '' ) === 'gemini' ? 5 : 1;
     for ( $attempt = 1; $attempt <= $max_attempts; $attempt++ ) {
         $resp = wp_remote_post( $endpoint, $request_args );
         $status = is_wp_error($resp) ? 0 : wp_remote_retrieve_response_code($resp);
-        if ( $attempt === $max_attempts || ! in_array($status, [ 429, 500, 502, 503 ], true) ) break;
-        sleep($attempt);
+        if ( $attempt === $max_attempts || ! in_array($status, [ 408, 429, 500, 502, 503, 504 ], true) ) break;
+        $delay_ms = ( (int) pow(2, $attempt - 1) * 1000 ) + mt_rand(100, 1000);
+        usleep($delay_ms * 1000);
     }
     $body = kaw_decode_provider_response( $resp, $provider );
     if ( is_wp_error($body) ) return $body;
@@ -994,6 +995,10 @@ function kaw_decode_provider_response( $response, $provider ) {
                 'Gemini model "%s" or endpoint was not found. Check the model in AI Writer → Settings.',
                 $provider['model']
             );
+        }
+        if ( $status === 503 && ($provider['pkey'] ?? '') === 'gemini' ) {
+            $message = 'Gemini is temporarily overloaded (HTTP 503). The plugin retried with backoff; please try again shortly.'
+                . ( $message !== '' ? ' Google details: ' . sanitize_text_field($message) : '' );
         }
         if ( $message === '' ) $message = $provider['label'] . ' returned HTTP ' . (int) $status . '.';
         return new WP_Error('api_http', $message);
