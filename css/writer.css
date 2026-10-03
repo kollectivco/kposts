@@ -195,6 +195,12 @@
     white-space: pre-wrap;
     word-break: break-word;
 }
+.kaw-output .kaw-article-title { margin: 0 0 10px; color: var(--kaw-ink); font-size: 1.65em; font-weight: 780; letter-spacing: -.025em; line-height: 1.35; }
+.kaw-output .kaw-article-deck { margin: 0 0 24px; color: #565b56; font-size: 1.12em; font-weight: 620; line-height: 1.65; }
+.kaw-output h2 { margin: 1.55em 0 .55em; color: var(--kaw-ink); font-size: 1.42em; font-weight: 760; letter-spacing: -.018em; line-height: 1.4; }
+.kaw-output h2:first-child { margin-top: 0; }
+.kaw-output p { margin: 0 0 1.1em; }
+.kaw-output p:last-child { margin-bottom: 0; }
 .kaw-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .kaw-placeholder { color: #9b9e99; font-size: 13px; }
 .kaw-empty .kaw-placeholder::before { display: block; margin-bottom: 12px; color: #d3d4cf; content: "✦"; font-size: 28px; line-height: 1; }

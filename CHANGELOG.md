@@ -1,5 +1,12 @@
 # Changelog
 
+## 6.3.0
+
+- Generated articles now include concise section headings for easier scanning.
+- Styled article titles, subheadlines, section headings, and paragraphs in the preview.
+- Converted section headings into WordPress H2 blocks when creating drafts.
+- Kept copied article text free of Markdown heading markers.
+
 ## 6.2.1
 
 - Updated the Gemini default to the supported Gemini 3.8 Flash model.

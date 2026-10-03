@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), 12-source news feed, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     6.2.1
+ * Version:     6.3.0
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '6.2.1' );
+define( 'KAW_VERSION', '6.3.0' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -803,8 +803,9 @@ STRICT ACCURACY RULES:
 - Do NOT add facts, statistics, quotes, names, or details not in the source.
 - Do NOT hallucinate or invent any information.
 - Rewrite the content in Kontentainment's voice and style.
-- Start with a strong headline, then a subheadline, then the body.
-- Use natural paragraph breaks — no markdown headers (##) or bold (**).
+- Start with a strong headline on the first line and a concise subheadline on the second line. Put a blank line after the subheadline, then start the article body.
+- Divide the body into clear, logical sections. Put a short, descriptive section heading on its own line before each major section, using exactly `## Heading` syntax. Do not add a heading to every paragraph.
+- Use natural paragraph breaks. Do not use bold (**), and do not prefix the headline or subheadline with Markdown symbols.
 - Be specific and direct. No filler.
 - Match the target word count as closely as possible.";
 
@@ -1004,7 +1005,7 @@ function kaw_ajax_create_draft() {
 
     $postarr = [
         'post_title'   => $title,
-        'post_content' => wpautop( wp_kses_post($body) ),
+        'post_content' => kaw_format_draft_body($body),
         'post_status'  => 'draft',
         'post_type'    => 'post',
     ];
@@ -1036,6 +1037,32 @@ function kaw_ajax_create_draft() {
     }
 
     wp_send_json_success([ 'edit_url' => get_edit_post_link($post_id, 'raw') ]);
+}
+
+function kaw_format_draft_body( $body ) {
+    $lines = preg_split('/\r\n|\r|\n/', trim($body));
+    $blocks = [];
+    $paragraph = [];
+
+    $flush_paragraph = function () use ( &$paragraph, &$blocks ) {
+        if ( empty($paragraph) ) return;
+        $blocks[] = wpautop( wp_kses_post( implode("\n", $paragraph) ) );
+        $paragraph = [];
+    };
+
+    foreach ( $lines as $line ) {
+        if ( preg_match('/^\s*##\s+(.+?)\s*$/u', $line, $matches) ) {
+            $flush_paragraph();
+            $blocks[] = '<h2>' . esc_html( trim($matches[1]) ) . '</h2>';
+        } elseif ( trim($line) === '' ) {
+            $flush_paragraph();
+        } else {
+            $paragraph[] = $line;
+        }
+    }
+
+    $flush_paragraph();
+    return implode("\n", $blocks);
 }
 
 function kaw_sideload_image( $url, $post_id ) {

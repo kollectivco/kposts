@@ -2,7 +2,37 @@
 (function ($) {
     'use strict';
 
-    function countWords(s){ return s.split(/\s+/).filter(Boolean).length; }
+    function countWords(s){ return s.replace(/^##\s+/gm,'').split(/\s+/).filter(Boolean).length; }
+
+    function plainArticle(s){ return (s||'').replace(/^##\s+/gm,'').trim(); }
+
+    function renderArticle($el, article){
+        var esc=function(value){ return $('<div>').text(value||'').html(); };
+        var blocks=(article||'').trim().split(/\n\s*\n/).filter(Boolean);
+        var html=[];
+
+        blocks.forEach(function(block, index){
+            block=block.trim();
+            var heading=block.match(/^##\s+([^\n]+)(?:\n([\s\S]*))?$/);
+            if(heading){
+                html.push('<h2>'+esc(heading[1])+'</h2>');
+                if(heading[2]) html.push('<p>'+esc(heading[2]).replace(/\n/g,'<br>')+'</p>');
+                return;
+            }
+
+            if(index===0){
+                var lines=block.split(/\r?\n/);
+                if(lines[0]) html.push('<h1 class="kaw-article-title">'+esc(lines.shift().trim())+'</h1>');
+                if(lines.length && lines[0].trim()) html.push('<p class="kaw-article-deck">'+esc(lines.shift().trim())+'</p>');
+                if(lines.length) html.push('<p>'+esc(lines.join('\n')).replace(/\n/g,'<br>')+'</p>');
+                return;
+            }
+
+            html.push('<p>'+esc(block).replace(/\n/g,'<br>')+'</p>');
+        });
+
+        $el.html(html.join(''));
+    }
 
     function applyDir($el, text){
         // If text contains Arabic characters, render RTL
@@ -71,7 +101,7 @@
     }
 
     function initWriter(){
-        var type='News', tone='Informative', lang='Arabic', lastSeo=null;
+        var type='News', tone='Informative', lang='Arabic', lastSeo=null, lastArticle='';
         typeListener('kaw-type-grid', function(v){ type=v; });
         chipListener('kaw-tone-row','tone', function(v){ tone=v; });
         chipListener('kaw-lang-row','lang', function(v){ lang=v; });
@@ -81,6 +111,7 @@
             var subject = $('#kaw-subject').val().trim();
             if(!subject){ alert('Please enter a subject.'); return; }
             var $output = $('#kaw-output');
+            lastArticle='';
             $output.removeClass('kaw-empty').html('<span class="kaw-placeholder">Writing...</span>');
             $('#kaw-copy-btn, #kaw-insert-btn').hide();
             $('#kaw-wc-count').text(''); $('#kaw-seo-box').hide();
@@ -91,7 +122,9 @@
                 article_content:'', seo: $('#kaw-seo-toggle').is(':checked') ? '1' : '',
             }, $(this), $output, function(article, seo){
                 lastSeo = seo;
-                $output.removeClass('kaw-empty').text(article);
+                lastArticle=article;
+                $output.removeClass('kaw-empty');
+                renderArticle($output, article);
                 applyDir($output, article);
                 $('#kaw-wc-count').text(countWords(article)+' words');
                 $('#kaw-copy-btn, #kaw-insert-btn').show();
@@ -100,14 +133,14 @@
         });
 
         $('#kaw-copy-btn').on('click', function(){
-            navigator.clipboard.writeText($('#kaw-output').text()).then(function(){
+            navigator.clipboard.writeText(plainArticle(lastArticle)).then(function(){
                 var $b=$('#kaw-copy-btn'); $b.text('Copied!'); setTimeout(function(){ $b.text('Copy'); },1500);
             });
         });
 
         $('#kaw-insert-btn').on('click', function(){
             doInsert({
-                content: $('#kaw-output').text().trim(),
+                content: lastArticle,
                 subject: $('#kaw-subject').val().trim(),
                 image_url: '',
                 seo_title: lastSeo ? lastSeo.title : '',
@@ -121,7 +154,7 @@
     function initNewsfeed(){
         var allNews=[], activeFilter='all';
         var feedType='News', feedTone='Informative', feedLang='Arabic';
-        var selectedItem=null, fetchedContent='', fetchedImage='', lastSeo=null, fetchRequestId=0;
+        var selectedItem=null, fetchedContent='', fetchedImage='', lastSeo=null, lastArticle='', fetchRequestId=0;
 
         typeListener('kaw-feed-type-grid', function(v){ feedType=v; });
         chipListener('kaw-feed-tone-row','tone', function(v){ feedTone=v; });
@@ -157,7 +190,7 @@
 
         $('#kaw-news-list').on('click', '.kaw-news-card', function(){
             var idx=parseInt($(this).data('idx'),10);
-            selectedItem=allNews[idx]; fetchedContent=''; fetchedImage=''; lastSeo=null;
+            selectedItem=allNews[idx]; fetchedContent=''; fetchedImage=''; lastSeo=null; lastArticle='';
             var requestId=++fetchRequestId;
             renderNews();
             $('#kaw-sel-title').text(selectedItem.title);
@@ -201,6 +234,7 @@
         $('#kaw-feed-generate-btn').on('click', function(){
             if(!selectedItem) return;
             var $output=$('#kaw-feed-output');
+            lastArticle='';
             $('#kaw-feed-output-panel').show();
             $output.html('<span class="kaw-placeholder">Writing from source content...</span>');
             $('#kaw-feed-copy-btn, #kaw-feed-insert-btn').hide();
@@ -214,7 +248,8 @@
                 seo: $('#kaw-feed-seo-toggle').is(':checked') ? '1' : '',
             }, $(this), $output, function(article, seo){
                 lastSeo=seo;
-                $output.text(article);
+                lastArticle=article;
+                renderArticle($output, article);
                 applyDir($output, article);
                 $('#kaw-feed-wc-count').text(countWords(article)+' words');
                 renderSEO($('#kaw-feed-seo-box'), seo);
@@ -223,7 +258,7 @@
         });
 
         $('#kaw-feed-copy-btn').on('click', function(){
-            navigator.clipboard.writeText($('#kaw-feed-output').text()).then(function(){
+            navigator.clipboard.writeText(plainArticle(lastArticle)).then(function(){
                 var $b=$('#kaw-feed-copy-btn'); $b.text('Copied!'); setTimeout(function(){ $b.text('Copy'); },1500);
             });
         });
@@ -231,7 +266,7 @@
         $('#kaw-feed-insert-btn').on('click', function(){
             var useImg = $('#kaw-use-image').is(':checked');
             doInsert({
-                content: $('#kaw-feed-output').text().trim(),
+                content: lastArticle,
                 subject: selectedItem ? selectedItem.title : 'AI Draft',
                 image_url: (useImg && fetchedImage) ? fetchedImage : '',
                 seo_title: lastSeo ? lastSeo.title : '',
