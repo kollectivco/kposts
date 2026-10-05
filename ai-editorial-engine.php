@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), manageable news sources, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     7.2.0
+ * Version:     7.3.0
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '7.2.0' );
+define( 'KAW_VERSION', '7.3.0' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -114,6 +114,27 @@ function kaw_default_sources() {
             'feed'  => 'https://ma3azef.com/%D9%85%D8%B1%D8%A7%D8%AC%D8%B9%D8%A7%D8%AA',
             'host'  => 'ma3azef.com',
             'link'  => '//a[contains(@href,"/مراجعات/") or contains(@href,"%D9%85%D8%B1%D8%A7%D8%AC%D8%B9%D8%A7%D8%AA") or contains(@href,"/reviews/")]',
+        ],
+        'scenenoise' => [
+            'label' => 'SceneNoise',
+            'base'  => 'https://scenenoise.com',
+            'feed'  => 'https://scenenoise.com/',
+            'host'  => 'scenenoise.com',
+            'link'  => '//a[contains(@href,"/Features/") or contains(@href,"/News/") or contains(@href,"/Trending/") or contains(@href,"/Audio/") or contains(@href,"/Life/") or contains(@href,"/Record-Label/")]',
+        ],
+        'manshoor_arts' => [
+            'label' => 'منشور (فنون وثقافة)',
+            'base'  => 'https://manshoor.com',
+            'feed'  => 'https://manshoor.com/categories/arts-and-culture/',
+            'host'  => 'manshoor.com',
+            'link'  => '//a[contains(@href,"/arts-and-culture/") and not(contains(@href,"/categories/"))]',
+        ],
+        'manshoor_society' => [
+            'label' => 'منشور (مجتمع)',
+            'base'  => 'https://manshoor.com',
+            'feed'  => 'https://manshoor.com/categories/society/',
+            'host'  => 'manshoor.com',
+            'link'  => '//a[contains(@href,"/society/") and not(contains(@href,"/categories/"))]',
         ],
     ];
 }
@@ -974,6 +995,7 @@ function kaw_extract_article_content( $html, $host ) {
 
     $selectors = [
         '//*[contains(@class,"article-body")]',
+        '//*[contains(@class,"article__body")]',
         '//*[contains(@class,"entry-content")]',
         '//*[contains(@class,"post-content")]',
         '//*[contains(@class,"content-body")]',

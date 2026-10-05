@@ -1,5 +1,11 @@
 # Changelog
 
+## 7.3.0
+
+- Added SceneNoise (`scenenoise.com`) as a built-in news source.
+- Added Manshoor Arts & Culture (`منشور - فنون وثقافة`) and Manshoor Society (`منشور - مجتمع`) as built-in news sources.
+- Added support for `article__body` container class in article body content extraction.
+
 ## 7.2.0
 
 - Added Ma3azef (`معازف`) and Ma3azef Reviews (`مراجعات معازف`) as built-in news sources.
