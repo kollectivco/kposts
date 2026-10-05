@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), manageable news sources, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     7.1.0
+ * Version:     7.1.1
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '7.1.0' );
+define( 'KAW_VERSION', '7.1.1' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -27,7 +27,7 @@ function kaw_default_sources() {
         'scene' => [
             'label' => 'SceneNow',
             'base'  => 'https://scenenow.com',
-            'feed'  => 'https://scenenow.com/Buzz',
+            'feed'  => 'https://scenenow.com',
             'host'  => 'scenenow.com',
             'link'  => '//a[contains(@href,"/Buzz/") or contains(@href,"/Noise/") or contains(@href,"/Film/") or contains(@href,"/ArtsAndCulture/") or contains(@href,"/Business/")]',
         ],

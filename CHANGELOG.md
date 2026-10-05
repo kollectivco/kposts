@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.1.1
+
+- Fetch SceneNow stories from its homepage instead of the Buzz section.
+
 ## 7.1.0
 
 - Detect article links on Almasry Alyoum and Yallakora pages when a custom source uses the default selector.
