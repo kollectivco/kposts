@@ -1,5 +1,12 @@
 # Changelog
 
+## 7.2.0
+
+- Added Ma3azef (`معازف`) and Ma3azef Reviews (`مراجعات معازف`) as built-in news sources.
+- Added URL path percent-encoding for Arabic and non-ASCII link paths to prevent Cloudflare HTTP 400 Bad Request errors.
+- Improved article title extraction in the news feed parser to detect nested heading elements (`h1`-`h5`) inside card links.
+- Whitelisted `admin.ma3azef.com` domain for backend image and article assets.
+
 ## 7.1.2
 
 - Prioritize the generated SEO Title for the WordPress post title field when SEO is generated.

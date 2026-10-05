@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), manageable news sources, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     7.1.2
+ * Version:     7.2.0
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '7.1.2' );
+define( 'KAW_VERSION', '7.2.0' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -101,6 +101,20 @@ function kaw_default_sources() {
             'host'  => 'theglocal.com',
             'link'  => '//h2/a | //h3/a | //h4/a | //article//a | //a[contains(@class,"title")] | //a[contains(@class,"card")]',
         ],
+        'ma3azef' => [
+            'label' => 'معازف',
+            'base'  => 'https://ma3azef.com',
+            'feed'  => 'https://ma3azef.com/',
+            'host'  => 'ma3azef.com',
+            'link'  => '//a[contains(@href,"/reviews/") or contains(@href,"/posts/") or contains(@href,"/lists/") or contains(@href,"/nuclear/") or contains(@href,"/dossier/") or contains(@href,"/مقابلات/") or contains(@href,"/مراجعات/") or contains(@href,"/مقالات/")]',
+        ],
+        'ma3azef_reviews' => [
+            'label' => 'مراجعات معازف',
+            'base'  => 'https://ma3azef.com',
+            'feed'  => 'https://ma3azef.com/%D9%85%D8%B1%D8%A7%D8%AC%D8%B9%D8%A7%D8%AA',
+            'host'  => 'ma3azef.com',
+            'link'  => '//a[contains(@href,"/مراجعات/") or contains(@href,"%D9%85%D8%B1%D8%A7%D8%AC%D8%B9%D8%A7%D8%AA") or contains(@href,"/reviews/")]',
+        ],
     ];
 }
 
@@ -166,8 +180,14 @@ function kaw_source_feed_url( $src ) {
     return $feed;
 }
 
+function kaw_encode_url_path( $url ) {
+    return preg_replace_callback( '/[^\x20-\x7e]/u', function( $match ) {
+        return rawurlencode( $match[0] );
+    }, (string) $url );
+}
+
 function kaw_allowed_hosts() {
-    $hosts = [];
+    $hosts = [ 'admin.ma3azef.com' ];
     foreach ( kaw_sources() as $s ) $hosts[] = $s['host'];
     return array_unique( $hosts );
 }
@@ -856,7 +876,13 @@ function kaw_parse_news( $html, $source, $src ) {
         }
     } else {
         $nodes = $xpath->query( kaw_source_link_xpath( $src ) );
-        if ( $nodes ) foreach ( $nodes as $node ) $links[] = [ 'title' => $node->textContent, 'href' => $node->getAttribute( 'href' ) ];
+        if ( $nodes ) {
+            foreach ( $nodes as $node ) {
+                $heading_nodes = $xpath->query( './/h1 | .//h2 | .//h3 | .//h4 | .//h5', $node );
+                $title_text    = ( $heading_nodes && $heading_nodes->length > 0 ) ? $heading_nodes->item( 0 )->textContent : $node->textContent;
+                $links[]       = [ 'title' => $title_text, 'href' => $node->getAttribute( 'href' ) ];
+            }
+        }
     }
 
     $items = []; $seen = [];
@@ -864,7 +890,7 @@ function kaw_parse_news( $html, $source, $src ) {
     foreach ( $links as $link ) {
         $title = trim( preg_replace('/\s+/', ' ', $link['title']) );
         $href  = preg_replace( '/#.*$/', '', trim( $link['href'] ) );
-        if ( mb_strlen($title) < 12 || mb_strlen($title) > 200 ) continue;
+        if ( mb_strlen($title) < 5 || mb_strlen($title) > 200 ) continue;
         if ( empty($href) || $href === '#' ) continue;
 
         // Build absolute URL
@@ -875,6 +901,8 @@ function kaw_parse_news( $html, $source, $src ) {
         } else {
             $url = rtrim($src['base'], '/') . '/' . ltrim($href, '/');
         }
+
+        $url = kaw_encode_url_path( $url );
 
         // Skip obvious non-articles
         if ( preg_match('#/(tag|category|author|page|search|login|subscribe)/#i', $url) ) continue;
@@ -897,8 +925,11 @@ function kaw_ajax_fetch_article() {
     check_ajax_referer( 'kaw_nonce', 'nonce' );
     if ( ! current_user_can('edit_posts') ) wp_send_json_error('Permission denied.');
 
-    $url = esc_url_raw( $_POST['url'] ?? '' );
-    if ( empty($url) ) wp_send_json_error('No URL provided.');
+    $raw_url = sanitize_text_field( wp_unslash( $_POST['url'] ?? '' ) );
+    if ( empty($raw_url) ) wp_send_json_error('No URL provided.');
+
+    $url = esc_url_raw( kaw_encode_url_path( $raw_url ) );
+    if ( empty($url) ) wp_send_json_error('Invalid URL provided.');
 
     $allowed = kaw_allowed_hosts();
     $host = preg_replace('/^www\./', '', parse_url($url, PHP_URL_HOST));
