@@ -1,5 +1,11 @@
 # Changelog
 
+## 7.1.2
+
+- Prioritize the generated SEO Title for the WordPress post title field when SEO is generated.
+- Fix draft article parsing so first paragraphs are preserved and not incorrectly swallowed as taglines.
+- Make TITLE and TAGLINE label matching resilient to markdown formatting, blank lines, and localized labels.
+
 ## 7.1.1
 
 - Fetch SceneNow stories from its homepage instead of the Buzz section.

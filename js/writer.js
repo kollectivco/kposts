@@ -2,11 +2,50 @@
 (function ($) {
     'use strict';
 
+    function parseArticleParts(text){
+        text = (text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+        var title = '', tagline = '', body = text;
+
+        var titleMatch = body.match(/^\s*(?:\*{1,2}|#{1,6}\s*)?(?:TITLE|العنوان):\s*(?:\*{1,2})?\s*(.+?)(?:\*{1,2})?\s*$/im);
+        if(titleMatch){
+            title = titleMatch[1].trim();
+            body = body.replace(/^\s*(?:\*{1,2}|#{1,6}\s*)?(?:TITLE|العنوان):\s*.+?$\n?/im, '');
+        }
+
+        var taglineMatch = body.match(/^\s*(?:\*{1,2}|#{1,6}\s*)?(?:TAGLINE|العنوان الفرعي):\s*(?:\*{1,2})?\s*(.+?)(?:\*{1,2})?\s*$/im);
+        if(taglineMatch){
+            tagline = taglineMatch[1].trim();
+            body = body.replace(/^\s*(?:\*{1,2}|#{1,6}\s*)?(?:TAGLINE|العنوان الفرعي):\s*.+?$\n?/im, '');
+        }
+
+        body = body.trim();
+
+        if(!title){
+            var blocks = body.split(/\n\s*\n/);
+            var firstBlock = (blocks.shift() || '').trim();
+            var lines = firstBlock.split(/\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+            if(lines.length){
+                title = lines.shift();
+                if(lines.length && !tagline && lines[0].length < 140 && !/[.?!،。]$/.test(lines[0])){
+                    tagline = lines.shift();
+                }
+                if(lines.length){
+                    blocks.unshift(lines.join('\n'));
+                }
+            }
+            body = blocks.join('\n\n').trim();
+        }
+
+        return { title: title, tagline: tagline, body: body };
+    }
+
     function cleanArticleLabels(s){
-        var lines=(s||'').split(/\r?\n/);
-        if(lines[0]) lines[0]=lines[0].replace(/^\s*TITLE:\s*/i,'');
-        if(lines[1]) lines[1]=lines[1].replace(/^\s*TAGLINE:\s*/i,'');
-        return lines.join('\n').trim();
+        var p = parseArticleParts(s);
+        var parts = [];
+        if(p.title) parts.push(p.title);
+        if(p.tagline) parts.push(p.tagline);
+        if(p.body) parts.push(p.body);
+        return parts.join('\n\n').trim();
     }
 
     function countWords(s){ return cleanArticleLabels(s).replace(/^##\s+/gm,'').split(/\s+/).filter(Boolean).length; }
@@ -27,27 +66,34 @@
         return seo;
     }
 
-    function plainArticle(s){ return cleanArticleLabels(s).replace(/^##\s+/gm,'').trim(); }
+    function plainArticle(s){
+        var p = parseArticleParts(s);
+        var parts = [];
+        if(p.title) parts.push(p.title);
+        if(p.tagline) parts.push(p.tagline);
+        if(p.body) parts.push(p.body.replace(/^##\s+/gm, '').trim());
+        return parts.join('\n\n').trim();
+    }
 
     function renderArticle($el, article){
         var esc=function(value){ return $('<div>').text(value||'').html(); };
-        var blocks=cleanArticleLabels(article).split(/\n\s*\n/).filter(Boolean);
-        var html=[];
+        var parsed = parseArticleParts(article);
+        var html = [];
 
-        blocks.forEach(function(block, index){
-            block=block.trim();
-            var heading=block.match(/^##\s+([^\n]+)(?:\n([\s\S]*))?$/);
+        if(parsed.title){
+            html.push('<h1 class="kaw-article-title">'+esc(parsed.title)+'</h1>');
+        }
+        if(parsed.tagline){
+            html.push('<p class="kaw-article-deck">'+esc(parsed.tagline)+'</p>');
+        }
+
+        var blocks = parsed.body.split(/\n\s*\n/).filter(Boolean);
+        blocks.forEach(function(block){
+            block = block.trim();
+            var heading = block.match(/^##\s+([^\n]+)(?:\n([\s\S]*))?$/);
             if(heading){
                 html.push('<h2>'+esc(heading[1])+'</h2>');
                 if(heading[2]) html.push('<p>'+esc(heading[2]).replace(/\n/g,'<br>')+'</p>');
-                return;
-            }
-
-            if(index===0){
-                var lines=block.split(/\r?\n/);
-                if(lines[0]) html.push('<h1 class="kaw-article-title">'+esc(lines.shift().trim())+'</h1>');
-                if(lines.length && lines[0].trim()) html.push('<p class="kaw-article-deck">'+esc(lines.shift().trim())+'</p>');
-                if(lines.length) html.push('<p>'+esc(lines.join('\n')).replace(/\n/g,'<br>')+'</p>');
                 return;
             }
 

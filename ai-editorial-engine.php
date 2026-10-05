@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), manageable news sources, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     7.1.1
+ * Version:     7.1.2
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '7.1.1' );
+define( 'KAW_VERSION', '7.1.2' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -1250,6 +1250,58 @@ function kaw_seo_field( $raw, $label ) {
 
 add_action( 'wp_ajax_kaw_create_draft', 'kaw_ajax_create_draft' );
 
+function kaw_parse_article_content( $content, $subject = '' ) {
+    $content = trim( (string) $content );
+    $content = str_replace( ["\r\n", "\r"], "\n", $content );
+
+    $title   = '';
+    $tagline = '';
+
+    // 1. Check for explicit TITLE / العنوان with optional markdown
+    if ( preg_match( '/^\s*(?:\*{1,2}|#{1,6}\s*)?(?:TITLE|العنوان):\s*(?:\*{1,2})?\s*(.+?)(?:\*{1,2})?\s*$/im', $content, $m ) ) {
+        $title   = trim( wp_strip_all_tags( $m[1] ) );
+        $content = preg_replace( '/^\s*(?:\*{1,2}|#{1,6}\s*)?(?:TITLE|العنوان):\s*.+?$\n?/im', '', $content, 1 );
+    }
+
+    // 2. Check for explicit TAGLINE / العنوان الفرعي with optional markdown
+    if ( preg_match( '/^\s*(?:\*{1,2}|#{1,6}\s*)?(?:TAGLINE|العنوان الفرعي):\s*(?:\*{1,2})?\s*(.+?)(?:\*{1,2})?\s*$/im', $content, $m ) ) {
+        $tagline = trim( wp_strip_all_tags( $m[1] ) );
+        $content = preg_replace( '/^\s*(?:\*{1,2}|#{1,6}\s*)?(?:TAGLINE|العنوان الفرعي):\s*.+?$\n?/im', '', $content, 1 );
+    }
+
+    $content = trim( $content );
+
+    // 3. Fallback if no explicit TITLE was marked
+    if ( empty( $title ) ) {
+        $blocks      = preg_split( '/\n\s*\n/', $content );
+        $first_block = trim( array_shift( $blocks ) ?? '' );
+        $lines       = array_values( array_filter( array_map( 'trim', explode( "\n", $first_block ) ), 'strlen' ) );
+
+        if ( ! empty( $lines ) ) {
+            $title = wp_strip_all_tags( array_shift( $lines ) );
+
+            if ( ! empty( $lines ) && empty( $tagline ) ) {
+                $candidate = $lines[0];
+                if ( mb_strlen( $candidate ) < 140 && ! preg_match( '/[.?!،。]$/u', $candidate ) ) {
+                    $tagline = wp_strip_all_tags( array_shift( $lines ) );
+                }
+            }
+
+            if ( ! empty( $lines ) ) {
+                array_unshift( $blocks, implode( "\n", $lines ) );
+            }
+        }
+
+        $content = implode( "\n\n", $blocks );
+    }
+
+    return [
+        'title'   => $title ?: $subject,
+        'tagline' => $tagline,
+        'body'    => trim( $content ),
+    ];
+}
+
 function kaw_ajax_create_draft() {
     check_ajax_referer( 'kaw_nonce', 'nonce' );
     if ( ! current_user_can('edit_posts') ) wp_send_json_error('Permission denied.');
@@ -1267,23 +1319,16 @@ function kaw_ajax_create_draft() {
 
     if ( empty($content) ) wp_send_json_error('No content to insert.');
 
-    $lines = explode("\n", trim($content));
-    $title_line = trim($lines[0] ?? '');
-    $tagline_line = trim($lines[1] ?? '');
-    $title_marked = preg_match('/^TITLE:\s*(.+?)\s*$/iu', $title_line, $title_match);
-    if ( $title_marked ) {
-        $title = wp_strip_all_tags($title_match[1]);
-        $has_tagline = preg_match('/^TAGLINE:\s*(.+?)\s*$/iu', $tagline_line, $tagline_match);
-        $tagline = $has_tagline ? sanitize_text_field($tagline_match[1]) : '';
-    } else {
-        $title = $title_line ? wp_strip_all_tags($title_line) : $subject;
-        $has_tagline = $tagline_line !== '';
-        $tagline = $has_tagline ? sanitize_text_field($tagline_line) : '';
-    }
-    $body  = implode("\n", array_slice($lines, $has_tagline ? 2 : 1));
+    $parsed        = kaw_parse_article_content( $content, $subject );
+    $article_title = $parsed['title'];
+    $tagline       = $parsed['tagline'];
+    $body          = $parsed['body'];
+
+    // Post title: prioritize generated SEO Title if provided; otherwise use parsed article headline, then subject.
+    $post_title = ! empty( $seo_title ) ? $seo_title : ( ! empty( $article_title ) ? $article_title : $subject );
 
     $postarr = [
-        'post_title'   => $title,
+        'post_title'   => $post_title,
         'post_content' => kaw_format_draft_body($body),
         'post_status'  => 'draft',
         'post_type'    => 'post',
@@ -1326,7 +1371,7 @@ function kaw_ajax_create_draft() {
         if ( $att_id && ! is_wp_error($att_id) ) set_post_thumbnail($post_id, $att_id);
         elseif ( is_wp_error($att_id) ) $image_error = $att_id->get_error_message();
     } elseif ( 'gemini' === $image_mode ) {
-        $att_id = kaw_generate_featured_image($title, $tagline, $body, $post_id);
+        $att_id = kaw_generate_featured_image($post_title ?: $article_title, $tagline, $body, $post_id);
         if ( $att_id && ! is_wp_error($att_id) ) set_post_thumbnail($post_id, $att_id);
         elseif ( is_wp_error($att_id) ) $image_error = $att_id->get_error_message();
     }
