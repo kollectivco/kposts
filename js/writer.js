@@ -315,12 +315,14 @@
                             $('#kaw-feed-image-mode').find('option[value="link"]').prop('disabled', false).end().val('link');
                         }
                     } else {
-                        $status.attr('class','kaw-fetch-status kaw-fetch-warn').text('Could not fetch full content \u2014 will write from headline only.');
+                        var errMsg = (res && res.data) ? res.data : 'Could not fetch full content';
+                        $status.attr('class','kaw-fetch-status kaw-fetch-warn').text(errMsg + ' \u2014 will write from headline only.');
                     }
                 },
-                error:function(){
+                error:function(xhr){
                     if(requestId!==fetchRequestId) return;
-                    $status.attr('class','kaw-fetch-status kaw-fetch-warn').text('Could not fetch content \u2014 will write from headline only.');
+                    var statusText = (xhr && xhr.status) ? ' (HTTP ' + xhr.status + ')' : '';
+                    $status.attr('class','kaw-fetch-status kaw-fetch-warn').text('Could not fetch content' + statusText + ' \u2014 will write from headline only.');
                 },
             });
         });

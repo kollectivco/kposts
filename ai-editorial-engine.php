@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), manageable news sources, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     7.3.0
+ * Version:     7.4.0
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '7.3.0' );
+define( 'KAW_VERSION', '7.4.0' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -136,6 +136,13 @@ function kaw_default_sources() {
             'host'  => 'manshoor.com',
             'link'  => '//a[contains(@href,"/society/") and not(contains(@href,"/categories/"))]',
         ],
+        '7iber' => [
+            'label' => 'حبر (موسيقى)',
+            'base'  => 'https://www.7iber.com',
+            'feed'  => 'https://www.7iber.com/tag/music/',
+            'host'  => '7iber.com',
+            'link'  => '//article//h2/a | //article//h3/a | //h2/a | //h3/a | //a[contains(@class,"title")]',
+        ],
     ];
 }
 
@@ -208,9 +215,21 @@ function kaw_encode_url_path( $url ) {
 }
 
 function kaw_allowed_hosts() {
-    $hosts = [ 'admin.ma3azef.com' ];
-    foreach ( kaw_sources() as $s ) $hosts[] = $s['host'];
-    return array_unique( $hosts );
+    $hosts = [ 'admin.ma3azef.com', '7iber.com' ];
+    foreach ( kaw_all_sources() as $s ) {
+        if ( ! empty( $s['host'] ) ) {
+            $hosts[] = strtolower( preg_replace( '/^www\./i', '', $s['host'] ) );
+        }
+        if ( ! empty( $s['base'] ) ) {
+            $bh = wp_parse_url( $s['base'], PHP_URL_HOST );
+            if ( $bh ) $hosts[] = strtolower( preg_replace( '/^www\./i', '', $bh ) );
+        }
+        if ( ! empty( $s['feed'] ) ) {
+            $fh = wp_parse_url( $s['feed'], PHP_URL_HOST );
+            if ( $fh ) $hosts[] = strtolower( preg_replace( '/^www\./i', '', $fh ) );
+        }
+    }
+    return array_values( array_unique( array_filter( $hosts ) ) );
 }
 
 // ── AI providers registry ────────────────────────────────────────────────────
@@ -235,7 +254,7 @@ function kaw_providers() {
         'gemini' => [
             'label'   => 'Gemini (Google)',
             'endpoint'=> 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-            'model'   => 'gemini-3.8-flash',
+            'model'   => 'gemini-2.5-flash',
             'optkey'  => 'kaw_key_gemini',
             'format'  => 'openai',
         ],
@@ -274,10 +293,20 @@ function kaw_saved_provider_model( $provider_key, $provider ) {
     $option_name = $provider['optkey'] . '_model';
     $model = get_option($option_name, $provider['model']);
 
-    // Gemini 2.0 Flash was shut down; replace only this known retired default.
-    if ( $provider_key === 'gemini' && $model === 'gemini-2.0-flash' ) {
-        $model = $provider['model'];
-        update_option($option_name, $model);
+    // Migrate retired or invalid Gemini models to current supported default.
+    if ( $provider_key === 'gemini' ) {
+        $retired = [
+            'gemini-3.8-flash',
+            'gemini-2.0-flash',
+            'gemini-2.0-flash-lite',
+            'gemini-1.5-flash',
+            'gemini-1.5-flash-001',
+            'gemini-1.5-pro',
+        ];
+        if ( empty($model) || in_array($model, $retired, true) ) {
+            $model = $provider['model'];
+            update_option($option_name, $model);
+        }
     }
 
     return $model;
@@ -953,20 +982,34 @@ function kaw_ajax_fetch_article() {
     if ( empty($url) ) wp_send_json_error('Invalid URL provided.');
 
     $allowed = kaw_allowed_hosts();
-    $host = preg_replace('/^www\./', '', parse_url($url, PHP_URL_HOST));
-    if ( ! in_array($host, $allowed) ) wp_send_json_error('Domain not allowed.');
+    $host = strtolower( preg_replace('/^www\./i', '', (string) wp_parse_url($url, PHP_URL_HOST)) );
+    if ( ! in_array($host, $allowed, true) ) {
+        wp_send_json_error( sprintf( 'Domain "%s" is not in allowed sources.', esc_html($host) ) );
+    }
 
-    $resp = wp_remote_get( $url, [ 'timeout' => 20, 'user-agent' => 'Mozilla/5.0 (compatible; KontentainmentBot/4.0)' ] );
+    $resp = wp_remote_get( $url, [
+        'timeout'     => 25,
+        'redirection' => 5,
+        'sslverify'   => false,
+        'user-agent'  => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+    ] );
     if ( is_wp_error($resp) ) wp_send_json_error( $resp->get_error_message() );
 
+    $status = (int) wp_remote_retrieve_response_code($resp);
+    if ( $status >= 400 ) {
+        $msg = sprintf( 'Site returned HTTP %d', $status );
+        if ( $status === 403 ) $msg .= ' (Cloudflare / bot protection blocked server request)';
+        wp_send_json_error( $msg );
+    }
+
     $html = wp_remote_retrieve_body($resp);
-    if ( empty($html) ) wp_send_json_error('Empty page.');
+    if ( empty($html) ) wp_send_json_error('Site returned an empty page.');
 
     $content = kaw_extract_article_content($html, $host);
     $image   = kaw_extract_og_image($html);
 
-    if ( empty($content) || strlen($content) < 100 ) {
-        wp_send_json_error('Could not extract article content.');
+    if ( empty($content) || strlen($content) < 80 ) {
+        wp_send_json_error('Could not extract article body from page HTML.');
     }
 
     wp_send_json_success([
@@ -1004,12 +1047,22 @@ function kaw_extract_article_content( $html, $host ) {
         '//*[@id="content"]',
     ];
 
+    $best_text = '';
     foreach ( $selectors as $sel ) {
         $nodes = $xpath->query($sel);
         if ( $nodes && $nodes->length > 0 ) {
             $text = kaw_node_to_text($nodes->item(0), $xpath);
-            if ( strlen(trim($text)) > 150 ) return trim($text);
+            if ( strlen(trim($text)) > strlen($best_text) ) {
+                $best_text = trim($text);
+            }
+            if ( strlen($best_text) > 300 ) {
+                return $best_text;
+            }
         }
+    }
+
+    if ( strlen($best_text) >= 150 ) {
+        return $best_text;
     }
 
     $paras = $xpath->query('//p'); $text = '';
@@ -1017,11 +1070,12 @@ function kaw_extract_article_content( $html, $host ) {
         $t = trim($p->textContent);
         if ( strlen($t) > 40 ) $text .= $t . "\n\n";
     }
-    return trim($text);
+    $text = trim($text);
+    return strlen($text) > strlen($best_text) ? $text : $best_text;
 }
 
 function kaw_node_to_text( $node, $xpath ) {
-    $remove = $xpath->query('.//nav | .//script | .//style | .//aside | .//*[contains(@class,"social")] | .//*[contains(@class,"share")] | .//*[contains(@class,"related")]', $node);
+    $remove = $xpath->query('.//nav | .//script | .//style | .//aside | .//*[contains(@class,"social")] | .//*[contains(@class,"share")] | .//*[contains(@class,"related")] | .//*[contains(@class,"breadcrumb")]', $node);
     if ( $remove ) foreach ( iterator_to_array($remove) as $n ) {
         if ( $n->parentNode ) $n->parentNode->removeChild($n);
     }
@@ -1257,7 +1311,7 @@ function kaw_call_provider( $provider, $system, $user, $max_tokens = 8192 ) {
 function kaw_decode_provider_response( $response, $provider ) {
     if ( is_wp_error($response) ) return $response;
 
-    $status = wp_remote_retrieve_response_code($response);
+    $status = (int) wp_remote_retrieve_response_code($response);
     $raw    = wp_remote_retrieve_body($response);
     $body   = json_decode($raw, true);
 
@@ -1268,15 +1322,32 @@ function kaw_decode_provider_response( $response, $provider ) {
                 $provider['model']
             ));
         }
+        if ( $status >= 400 ) {
+            return new WP_Error('api_http', sprintf('%s returned HTTP %d.', $provider['label'], $status));
+        }
         return new WP_Error('api_response', $provider['label'] . ' returned an unreadable response.');
     }
 
-    if ( $status < 200 || $status >= 300 || ! empty($body['error']) ) {
-        $error = $body['error'] ?? [];
+    $has_error = ( $status < 200 || $status >= 300 || ! empty($body['error']) || ! empty($body[0]['error']) );
+    if ( $has_error ) {
+        $error = [];
+        if ( ! empty($body['error']) ) {
+            $error = $body['error'];
+        } elseif ( ! empty($body[0]['error']) ) {
+            $error = $body[0]['error'];
+        }
+
         $message = is_array($error) ? ($error['message'] ?? '') : (string) $error;
         if ( $message === '' && ! empty($body['message']) && is_string($body['message']) ) {
             $message = $body['message'];
         }
+        if ( $message === '' && ! empty($body[0]['message']) && is_string($body[0]['message']) ) {
+            $message = $body[0]['message'];
+        }
+        if ( $message === '' && ! empty($body['error_description']) && is_string($body['error_description']) ) {
+            $message = $body['error_description'];
+        }
+
         if ( $message === '' && $status === 404 && ($provider['pkey'] ?? '') === 'gemini' ) {
             $message = sprintf(
                 'Gemini model "%s" or endpoint was not found. Check the model in AI Writer → Settings.',
@@ -1287,8 +1358,11 @@ function kaw_decode_provider_response( $response, $provider ) {
             $message = 'Gemini is temporarily overloaded (HTTP 503). The plugin retried with backoff; please try again shortly.'
                 . ( $message !== '' ? ' Google details: ' . sanitize_text_field($message) : '' );
         }
-        if ( $message === '' ) $message = $provider['label'] . ' returned HTTP ' . (int) $status . '.';
-        return new WP_Error('api_http', $message);
+        if ( $message === '' ) {
+            $message = $provider['label'] . ' returned HTTP ' . (int) $status . '.';
+        }
+
+        return new WP_Error('api_http', $provider['label'] . ' error: ' . sanitize_text_field($message));
     }
 
     return $body;

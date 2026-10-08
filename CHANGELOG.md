@@ -1,5 +1,14 @@
 # Changelog
 
+## 7.4.0
+
+- Fixed Google Gemini integration: set supported default model (`gemini-2.5-flash`) and automatically migrate retired/obsolete model names (`gemini-3.8-flash`, `gemini-2.0-flash`, `gemini-1.5-flash`).
+- Fixed API error decoding to correctly extract nested Google Gemini and OpenAI error payloads (`error.message`, array errors) rather than showing generic HTTP errors.
+- Added 7iber (`7iber.com / حبر`) as a built-in music news source.
+- Broadened article fetch domain allowlist to dynamically include all registered sources, base domains, and feed hosts.
+- Improved article content extraction to handle breadcrumbs, complex container hierarchies, and modern responsive layouts (Ma3azef, Manshoor, SceneNoise).
+- Enhanced article fetching diagnostics in writer interface to display specific server/source error messages.
+
 ## 7.3.0
 
 - Added SceneNoise (`scenenoise.com`) as a built-in news source.
