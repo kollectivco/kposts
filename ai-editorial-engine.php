@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), manageable news sources, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     7.4.0
+ * Version:     7.4.1
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '7.4.0' );
+define( 'KAW_VERSION', '7.4.1' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -193,6 +193,9 @@ function kaw_source_link_xpath( $src ) {
         if ( $host === 'yallakora.com' ) {
             return '//a[contains(@href,"/egyptian-league/") and contains(@href,"/news/")]';
         }
+        if ( $host === 'scenenow.com' ) {
+            return '//a[contains(@href,"/Buzz/") or contains(@href,"/Noise/") or contains(@href,"/Film/") or contains(@href,"/ArtsAndCulture/") or contains(@href,"/Business/")]';
+        }
         return '//article//h2/a | //article//h3/a | //h1/a | //h2/a | //h3/a | //h4/a | //a[contains(@class,"title")] | //a[contains(@href,"/news/")] | //a[contains(@href,"/article/")]';
     }
 
@@ -342,6 +345,12 @@ add_action( 'admin_menu', function () {
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 add_action( 'admin_init', function () {
+    $db_version = get_option( 'kaw_installed_version', '' );
+    if ( version_compare( (string) $db_version, KAW_VERSION, '<' ) ) {
+        kaw_clear_news_cache();
+        update_option( 'kaw_installed_version', KAW_VERSION );
+    }
+
     register_setting( 'kaw_settings_group', 'kaw_api_key', [ 'sanitize_callback' => 'sanitize_text_field' ] ); // legacy
     register_setting( 'kaw_settings_group', 'kaw_default_provider', [ 'sanitize_callback' => 'sanitize_text_field' ] );
     foreach ( kaw_providers() as $pkey => $p ) {
@@ -942,6 +951,7 @@ function kaw_parse_news( $html, $source, $src ) {
         $href  = preg_replace( '/#.*$/', '', trim( $link['href'] ) );
         if ( mb_strlen($title) < 5 || mb_strlen($title) > 200 ) continue;
         if ( empty($href) || $href === '#' ) continue;
+        if ( preg_match( '/^(javascript|mailto|tel|data|blob):/i', $href ) || strpos( $href, 'javascript' ) !== false ) continue;
 
         // Build absolute URL
         if ( strpos($href, 'http') === 0 ) {
@@ -952,12 +962,18 @@ function kaw_parse_news( $html, $source, $src ) {
             $url = rtrim($src['base'], '/') . '/' . ltrim($href, '/');
         }
 
-        $url = kaw_encode_url_path( $url );
+        $decoded_url = rawurldecode( $url );
+        $url = kaw_encode_url_path( $decoded_url );
+
+        $url_parts = wp_parse_url($url);
+        $url_path  = trim($url_parts['path'] ?? '', '/');
+        if ( empty($url_path) || $url_path === 'index.php' || $url_path === 'index.html' ) continue;
+        if ( preg_match('#(javascript:void|javascript;)#i', $url) ) continue;
 
         // Skip obvious non-articles
-        if ( preg_match('#/(tag|category|author|page|search|login|subscribe)/#i', $url) ) continue;
+        if ( preg_match('#/(tag|category|categories|author|page|search|login|subscribe|feed|rss)/#i', $url) ) continue;
 
-        $hash = md5($title);
+        $hash = md5($title . '|' . $url);
         if ( isset($seen[$hash]) ) continue;
         $seen[$hash] = true;
 
@@ -977,8 +993,12 @@ function kaw_ajax_fetch_article() {
 
     $raw_url = sanitize_text_field( wp_unslash( $_POST['url'] ?? '' ) );
     if ( empty($raw_url) ) wp_send_json_error('No URL provided.');
+    if ( preg_match( '/^(javascript|mailto|tel):/i', $raw_url ) || strpos( $raw_url, 'javascript' ) !== false ) {
+        wp_send_json_error('Invalid article link (interactive element or script, not an article).');
+    }
 
-    $url = esc_url_raw( kaw_encode_url_path( $raw_url ) );
+    $decoded_url = rawurldecode( $raw_url );
+    $url = esc_url_raw( kaw_encode_url_path( $decoded_url ) );
     if ( empty($url) ) wp_send_json_error('Invalid URL provided.');
 
     $allowed = kaw_allowed_hosts();
@@ -987,15 +1007,29 @@ function kaw_ajax_fetch_article() {
         wp_send_json_error( sprintf( 'Domain "%s" is not in allowed sources.', esc_html($host) ) );
     }
 
-    $resp = wp_remote_get( $url, [
+    $request_args = [
         'timeout'     => 25,
         'redirection' => 5,
         'sslverify'   => false,
         'user-agent'  => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-    ] );
+    ];
+
+    $resp = wp_remote_get( $url, $request_args );
     if ( is_wp_error($resp) ) wp_send_json_error( $resp->get_error_message() );
 
     $status = (int) wp_remote_retrieve_response_code($resp);
+
+    // If 404, retry by toggling trailing slash once (common issue with Next.js/WordPress server routing)
+    if ( $status === 404 ) {
+        $alt_url = ( substr($url, -1) === '/' ) ? rtrim($url, '/') : $url . '/';
+        $alt_resp = wp_remote_get( $alt_url, $request_args );
+        if ( ! is_wp_error($alt_resp) && (int) wp_remote_retrieve_response_code($alt_resp) === 200 ) {
+            $resp = $alt_resp;
+            $url = $alt_url;
+            $status = 200;
+        }
+    }
+
     if ( $status >= 400 ) {
         $msg = sprintf( 'Site returned HTTP %d', $status );
         if ( $status === 403 ) $msg .= ' (Cloudflare / bot protection blocked server request)';

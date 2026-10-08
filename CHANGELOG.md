@@ -1,5 +1,12 @@
 # Changelog
 
+## 7.4.1
+
+- Fixed an issue where interactive video popups or anchor elements with `javascript:void(0)` were parsed as articles, causing all cards to appear selected simultaneously and returning HTTP 400.
+- Fixed News Feed card selection so only the clicked card is highlighted and selected.
+- Added automatic trailing slash retry in article fetching to prevent false HTTP 404 responses caused by Next.js / server routing differences.
+- Added automatic news feed cache clearing upon plugin version upgrade so stale links and errors are refreshed immediately.
+
 ## 7.4.0
 
 - Fixed Google Gemini integration: set supported default model (`gemini-2.5-flash`) and automatically migrate retired/obsolete model names (`gemini-3.8-flash`, `gemini-2.0-flash`, `gemini-1.5-flash`).
