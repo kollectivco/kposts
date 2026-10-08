@@ -1,5 +1,10 @@
 # Changelog
 
+## 7.4.3
+
+- Updated Google Gemini default model to `gemini-3.8-flash` in response to Google API policy deprecating `gemini-2.5-flash` for new requests.
+- Automatically migrate obsolete models (`gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-flash`) to `gemini-3.8-flash`.
+
 ## 7.4.2
 
 - Fixed HTTP 308 permanent redirect resolution with relative `Location` headers so Next.js-powered sources (such as Ma3azef and Billboard Arabia) load full article content seamlessly instead of failing with "Site returned an empty page".

@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), manageable news sources, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     7.4.2
+ * Version:     7.4.3
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '7.4.2' );
+define( 'KAW_VERSION', '7.4.3' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -257,7 +257,7 @@ function kaw_providers() {
         'gemini' => [
             'label'   => 'Gemini (Google)',
             'endpoint'=> 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-            'model'   => 'gemini-2.5-flash',
+            'model'   => 'gemini-3.8-flash',
             'optkey'  => 'kaw_key_gemini',
             'format'  => 'openai',
         ],
@@ -296,10 +296,10 @@ function kaw_saved_provider_model( $provider_key, $provider ) {
     $option_name = $provider['optkey'] . '_model';
     $model = get_option($option_name, $provider['model']);
 
-    // Migrate retired or invalid Gemini models to current supported default.
+    // Migrate retired or invalid Gemini models to current supported default (gemini-3.8-flash).
     if ( $provider_key === 'gemini' ) {
         $retired = [
-            'gemini-3.8-flash',
+            'gemini-2.5-flash',
             'gemini-2.0-flash',
             'gemini-2.0-flash-lite',
             'gemini-1.5-flash',
