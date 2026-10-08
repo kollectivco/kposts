@@ -1,5 +1,13 @@
 # Changelog
 
+## 7.4.2
+
+- Fixed HTTP 308 permanent redirect resolution with relative `Location` headers so Next.js-powered sources (such as Ma3azef and Billboard Arabia) load full article content seamlessly instead of failing with "Site returned an empty page".
+- Fixed HTTP 400 Bad Request errors by properly percent-encoding whitespace and special characters in `kaw_encode_url_path`.
+- Added explicit detection and informative user-facing error messages for bot firewall challenges (AWS WAF HTTP 202 and Cloudflare Managed Challenge) such as on Lovin Cairo.
+- Filtered out generic anchor titles ("اقرأ أكثر", "اقرأ المزيد", "Read more") and top-level section landing pages from news feed card parsing.
+- Added `/ملفات/` (Dossier) and `/قوائم/` (Lists) sections to Ma3azef news source definitions and updated 7iber to use its official RSS feed endpoint.
+
 ## 7.4.1
 
 - Fixed an issue where interactive video popups or anchor elements with `javascript:void(0)` were parsed as articles, causing all cards to appear selected simultaneously and returning HTTP 400.

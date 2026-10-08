@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), manageable news sources, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     7.4.1
+ * Version:     7.4.2
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '7.4.1' );
+define( 'KAW_VERSION', '7.4.2' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -106,7 +106,7 @@ function kaw_default_sources() {
             'base'  => 'https://ma3azef.com',
             'feed'  => 'https://ma3azef.com/',
             'host'  => 'ma3azef.com',
-            'link'  => '//a[contains(@href,"/reviews/") or contains(@href,"/posts/") or contains(@href,"/lists/") or contains(@href,"/nuclear/") or contains(@href,"/dossier/") or contains(@href,"/مقابلات/") or contains(@href,"/مراجعات/") or contains(@href,"/مقالات/")]',
+            'link'  => '//a[contains(@href,"/reviews/") or contains(@href,"/posts/") or contains(@href,"/lists/") or contains(@href,"/nuclear/") or contains(@href,"/dossier/") or contains(@href,"/مقابلات/") or contains(@href,"/مراجعات/") or contains(@href,"/مقالات/") or contains(@href,"/ملفات/") or contains(@href,"/قوائم/")]',
         ],
         'ma3azef_reviews' => [
             'label' => 'مراجعات معازف',
@@ -137,9 +137,9 @@ function kaw_default_sources() {
             'link'  => '//a[contains(@href,"/society/") and not(contains(@href,"/categories/"))]',
         ],
         '7iber' => [
-            'label' => 'حبر (موسيقى)',
+            'label' => 'حبر (7iber)',
             'base'  => 'https://www.7iber.com',
-            'feed'  => 'https://www.7iber.com/tag/music/',
+            'feed'  => 'https://www.7iber.com/feed/',
             'host'  => '7iber.com',
             'link'  => '//article//h2/a | //article//h3/a | //h2/a | //h3/a | //a[contains(@class,"title")]',
         ],
@@ -212,7 +212,7 @@ function kaw_source_feed_url( $src ) {
 }
 
 function kaw_encode_url_path( $url ) {
-    return preg_replace_callback( '/[^\x20-\x7e]/u', function( $match ) {
+    return preg_replace_callback( '/[^\x21-\x7e]/u', function( $match ) {
         return rawurlencode( $match[0] );
     }, (string) $url );
 }
@@ -944,7 +944,11 @@ function kaw_parse_news( $html, $source, $src ) {
         }
     }
 
-    $items = []; $seen = [];
+    $items = [];
+    $seen_urls = [];
+    $seen_titles = [];
+
+    $generic_titles = [ 'اقرأ أكثر', 'اقرأ المزيد', 'المزيد', 'قراءة المزيد', 'read more', 'more', 'تفاصيل', 'التفاصيل', 'view more', 'click here' ];
 
     foreach ( $links as $link ) {
         $title = trim( preg_replace('/\s+/', ' ', $link['title']) );
@@ -952,6 +956,9 @@ function kaw_parse_news( $html, $source, $src ) {
         if ( mb_strlen($title) < 5 || mb_strlen($title) > 200 ) continue;
         if ( empty($href) || $href === '#' ) continue;
         if ( preg_match( '/^(javascript|mailto|tel|data|blob):/i', $href ) || strpos( $href, 'javascript' ) !== false ) continue;
+
+        // Skip generic link titles like "Read more" / "اقرأ أكثر"
+        if ( in_array( mb_strtolower($title), $generic_titles, true ) ) continue;
 
         // Build absolute URL
         if ( strpos($href, 'http') === 0 ) {
@@ -970,12 +977,18 @@ function kaw_parse_news( $html, $source, $src ) {
         if ( empty($url_path) || $url_path === 'index.php' || $url_path === 'index.html' ) continue;
         if ( preg_match('#(javascript:void|javascript;)#i', $url) ) continue;
 
-        // Skip obvious non-articles
+        // Skip obvious non-articles or pure section landing pages
         if ( preg_match('#/(tag|category|categories|author|page|search|login|subscribe|feed|rss)/#i', $url) ) continue;
+        if ( ! strpos($url_path, '/') && ! preg_match('/-\d+$/', $url_path) ) {
+            // A single segment like /موسيقى or /أخبار without subpath or post ID is a section page, not an article
+            continue;
+        }
 
-        $hash = md5($title . '|' . $url);
-        if ( isset($seen[$hash]) ) continue;
-        $seen[$hash] = true;
+        $url_key   = strtolower( rtrim( $url, '/' ) );
+        $title_key = mb_strtolower( $title );
+        if ( isset( $seen_urls[$url_key] ) || isset( $seen_titles[$title_key] ) ) continue;
+        $seen_urls[$url_key]     = true;
+        $seen_titles[$title_key] = true;
 
         $items[] = [ 'title' => $title, 'url' => $url, 'source' => $source, 'label' => $src['label'] ];
         if ( count($items) >= 40 ) break;
@@ -1009,41 +1022,101 @@ function kaw_ajax_fetch_article() {
 
     $request_args = [
         'timeout'     => 25,
-        'redirection' => 5,
+        'redirection' => 0, // Manual redirect handling below to support relative Location headers and HTTP 308
         'sslverify'   => false,
         'user-agent'  => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
     ];
 
-    $resp = wp_remote_get( $url, $request_args );
-    if ( is_wp_error($resp) ) wp_send_json_error( $resp->get_error_message() );
+    $redirect_count = 0;
+    $max_redirects  = 6;
+    $resp           = null;
+    $status         = 0;
 
-    $status = (int) wp_remote_retrieve_response_code($resp);
-
-    // If 404, retry by toggling trailing slash once (common issue with Next.js/WordPress server routing)
-    if ( $status === 404 ) {
-        $alt_url = ( substr($url, -1) === '/' ) ? rtrim($url, '/') : $url . '/';
-        $alt_resp = wp_remote_get( $alt_url, $request_args );
-        if ( ! is_wp_error($alt_resp) && (int) wp_remote_retrieve_response_code($alt_resp) === 200 ) {
-            $resp = $alt_resp;
-            $url = $alt_url;
-            $status = 200;
+    while ( $redirect_count < $max_redirects ) {
+        $resp = wp_remote_get( $url, $request_args );
+        if ( is_wp_error( $resp ) ) {
+            wp_send_json_error( $resp->get_error_message() );
         }
+
+        $status = (int) wp_remote_retrieve_response_code( $resp );
+
+        // If redirect status (301, 302, 303, 307, 308)
+        if ( in_array( $status, [ 301, 302, 303, 307, 308 ], true ) ) {
+            $loc = wp_remote_retrieve_header( $resp, 'location' );
+            if ( empty( $loc ) ) {
+                break;
+            }
+            // Resolve relative Location
+            if ( strpos( $loc, 'http://' ) !== 0 && strpos( $loc, 'https://' ) !== 0 ) {
+                if ( strpos( $loc, '//' ) === 0 ) {
+                    $loc = 'https:' . $loc;
+                } else {
+                    $parts = wp_parse_url( $url );
+                    $base  = ( $parts['scheme'] ?? 'https' ) . '://' . ( $parts['host'] ?? '' );
+                    $loc   = rtrim( $base, '/' ) . '/' . ltrim( $loc, '/' );
+                }
+            }
+            $next_url = esc_url_raw( kaw_encode_url_path( rawurldecode( $loc ) ) );
+            if ( empty( $next_url ) || $next_url === $url ) {
+                break;
+            }
+            $next_host = strtolower( preg_replace( '/^www\./i', '', (string) wp_parse_url( $next_url, PHP_URL_HOST ) ) );
+            if ( ! in_array( $next_host, $allowed, true ) ) {
+                break;
+            }
+            $url = $next_url;
+            $redirect_count++;
+            continue;
+        }
+
+        // If 404 on initial attempt, retry by toggling trailing slash once (common with Next.js/WordPress routing)
+        if ( $status === 404 && $redirect_count === 0 ) {
+            $alt_url  = ( substr( $url, -1 ) === '/' ) ? rtrim( $url, '/' ) : $url . '/';
+            $alt_resp = wp_remote_get( $alt_url, $request_args );
+            if ( ! is_wp_error( $alt_resp ) ) {
+                $alt_status = (int) wp_remote_retrieve_response_code( $alt_resp );
+                if ( in_array( $alt_status, [ 200, 301, 302, 303, 307, 308 ], true ) ) {
+                    $resp   = $alt_resp;
+                    $url    = $alt_url;
+                    $status = $alt_status;
+                    if ( in_array( $status, [ 301, 302, 303, 307, 308 ], true ) ) {
+                        $redirect_count++;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        break;
+    }
+
+    // Detect bot protection challenges (AWS WAF 202 challenge or Cloudflare Turnstile/Managed challenge)
+    $waf_action    = wp_remote_retrieve_header( $resp, 'x-amzn-waf-action' );
+    $server_header = strtolower( (string) wp_remote_retrieve_header( $resp, 'server' ) );
+    $html          = wp_remote_retrieve_body( $resp );
+
+    if ( $status === 202 || $waf_action === 'challenge' || ( strpos( $server_header, 'awselb' ) !== false && strlen( $html ) < 3000 && strpos( $html, 'challenge.js' ) !== false ) ) {
+        wp_send_json_error( 'Site protected by AWS WAF (HTTP 202 bot challenge). Server cannot bypass challenge.' );
+    }
+
+    if ( $status === 403 || strpos( $html, 'challenges.cloudflare.com' ) !== false || strpos( $html, '<title>Just a moment...</title>' ) !== false ) {
+        wp_send_json_error( sprintf( 'Site returned HTTP %d (Cloudflare / bot challenge blocked server request).', $status ) );
     }
 
     if ( $status >= 400 ) {
-        $msg = sprintf( 'Site returned HTTP %d', $status );
-        if ( $status === 403 ) $msg .= ' (Cloudflare / bot protection blocked server request)';
-        wp_send_json_error( $msg );
+        wp_send_json_error( sprintf( 'Site returned HTTP %d', $status ) );
     }
 
-    $html = wp_remote_retrieve_body($resp);
-    if ( empty($html) ) wp_send_json_error('Site returned an empty page.');
+    if ( empty( $html ) ) {
+        wp_send_json_error( 'Site returned an empty page.' );
+    }
 
-    $content = kaw_extract_article_content($html, $host);
-    $image   = kaw_extract_og_image($html);
+    $current_host = strtolower( preg_replace( '/^www\./i', '', (string) wp_parse_url( $url, PHP_URL_HOST ) ) );
+    $content = kaw_extract_article_content( $html, $current_host );
+    $image   = kaw_extract_og_image( $html );
 
-    if ( empty($content) || strlen($content) < 80 ) {
-        wp_send_json_error('Could not extract article body from page HTML.');
+    if ( empty( $content ) || strlen( $content ) < 80 ) {
+        wp_send_json_error( 'Could not extract article body from page HTML.' );
     }
 
     wp_send_json_success([
