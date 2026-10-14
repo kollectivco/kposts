@@ -1,5 +1,12 @@
 # Changelog
 
+## 7.4.5
+
+- Added OpenRouter (`openrouter.ai`) as a supported AI provider with default model `openai/gpt-4o`.
+- Automatically configured OpenRouter API key and set it as the default provider out-of-the-box.
+- Implemented OpenRouter specific headers (`HTTP-Referer`, `X-Title`) and safe token cap to prevent HTTP 402 token reservation limits.
+- Added OpenRouter documentation link to AI Writer settings page.
+
 ## 7.4.4
 
 - Switched Billboard Arabia news source to its official RSS feed (`/rssFeed/221`), delivering canonical URLs, real-time updates, and direct media thumbnails.
