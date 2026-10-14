@@ -1,5 +1,12 @@
 # Changelog
 
+## 7.4.4
+
+- Switched Billboard Arabia news source to its official RSS feed (`/rssFeed/221`), delivering canonical URLs, real-time updates, and direct media thumbnails.
+- Added automatic subgenre recovery on HTTP 404 for Billboard Arabia: when a URL is missing its subcategory path (e.g. `/موسيقى/slug-1234`), the engine automatically tests the 9 Billboard music genres (`خليجي`, `مصري`, `ليفانتين`, etc.) to resolve the full article content.
+- Pre-normalized `billboardarabia.com` URLs to `www.billboardarabia.com` to eliminate unnecessary 301 redirects.
+- Added `webcms.billboardarabia.com` to source allowlist for media assets.
+
 ## 7.4.3
 
 - Updated Google Gemini default model to `gemini-3.8-flash` in response to Google API policy deprecating `gemini-2.5-flash` for new requests.

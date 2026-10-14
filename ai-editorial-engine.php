@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen), manageable news sources, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     7.4.3
+ * Version:     7.4.4
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '7.4.3' );
+define( 'KAW_VERSION', '7.4.4' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -20,9 +20,9 @@ function kaw_default_sources() {
         'billboard' => [
             'label' => 'Billboard Arabia',
             'base'  => 'https://www.billboardarabia.com',
-            'feed'  => 'https://www.billboardarabia.com/',
+            'feed'  => 'https://www.billboardarabia.com/rssFeed/221',
             'host'  => 'billboardarabia.com',
-            'link'  => '//a[contains(@href,"/موسيقى/") or contains(@href,"/أخبار/") or contains(@href,"%D9%85%D9%88%D8%B3%D9%8A%D9%82%D9%89") or contains(@href,"-80") or contains(@href,"-81")]',
+            'link'  => '//item/link | //a[contains(@href,"/موسيقى/")]',
         ],
         'scene' => [
             'label' => 'SceneNow',
@@ -218,7 +218,7 @@ function kaw_encode_url_path( $url ) {
 }
 
 function kaw_allowed_hosts() {
-    $hosts = [ 'admin.ma3azef.com', '7iber.com' ];
+    $hosts = [ 'admin.ma3azef.com', '7iber.com', 'webcms.billboardarabia.com' ];
     foreach ( kaw_all_sources() as $s ) {
         if ( ! empty( $s['host'] ) ) {
             $hosts[] = strtolower( preg_replace( '/^www\./i', '', $s['host'] ) );
@@ -1020,6 +1020,11 @@ function kaw_ajax_fetch_article() {
         wp_send_json_error( sprintf( 'Domain "%s" is not in allowed sources.', esc_html($host) ) );
     }
 
+    // Billboard Arabia always serves from www.billboardarabia.com; normalize to avoid redundant 301
+    if ( $host === 'billboardarabia.com' ) {
+        $url = preg_replace( '#^(https?://)(billboardarabia\.com)#i', '$1www.$2', $url );
+    }
+
     $request_args = [
         'timeout'     => 25,
         'redirection' => 0, // Manual redirect handling below to support relative Location headers and HTTP 308
@@ -1082,6 +1087,32 @@ function kaw_ajax_fetch_article() {
                     if ( in_array( $status, [ 301, 302, 303, 307, 308 ], true ) ) {
                         $redirect_count++;
                         continue;
+                    }
+                }
+            }
+        }
+
+        // If still 404 on Billboard Arabia, check if subgenre was omitted in URL path (e.g. /موسيقى/slug-1234)
+        if ( $status === 404 && $host === 'billboardarabia.com' ) {
+            $decoded_curr = rawurldecode( $url );
+            if ( preg_match( '#^(https?://(?:www\.)?billboardarabia\.com/موسيقى/)([^/]+)$#u', $decoded_curr, $bb_match ) ) {
+                $bb_base = 'https://www.billboardarabia.com/موسيقى/';
+                $bb_slug = $bb_match[2];
+                $bb_subcats = [ 'خليجي', 'مصري', 'ليفانتين', 'مغاربي', 'عالمي', 'مهرجانات', 'إندي-عربي', 'هيب-هوب-عربي', 'منوعات' ];
+                foreach ( $bb_subcats as $sc ) {
+                    $cand_url  = esc_url_raw( kaw_encode_url_path( $bb_base . $sc . '/' . $bb_slug ) );
+                    $cand_resp = wp_remote_get( $cand_url, $request_args );
+                    if ( ! is_wp_error( $cand_resp ) ) {
+                        $cand_status = (int) wp_remote_retrieve_response_code( $cand_resp );
+                        if ( in_array( $cand_status, [ 200, 301, 302, 303, 307, 308 ], true ) ) {
+                            $resp   = $cand_resp;
+                            $url    = $cand_url;
+                            $status = $cand_status;
+                            if ( in_array( $status, [ 301, 302, 303, 307, 308 ], true ) ) {
+                                $redirect_count++;
+                            }
+                            break;
+                        }
                     }
                 }
             }
