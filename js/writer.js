@@ -316,7 +316,10 @@
                         }
                     } else {
                         var errMsg = (res && res.data) ? res.data : 'Could not fetch full content';
-                        $status.attr('class','kaw-fetch-status kaw-fetch-warn').text(errMsg + ' \u2014 will write from headline only.');
+                        if (errMsg.indexOf('will write from headline') === -1) {
+                            errMsg += ' \u2014 will write from headline only.';
+                        }
+                        $status.attr('class','kaw-fetch-status kaw-fetch-warn').text(errMsg);
                     }
                 },
                 error:function(xhr){

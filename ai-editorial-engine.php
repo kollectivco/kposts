@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (OpenRouter, Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen, Poe), manageable news sources, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     7.4.5
+ * Version:     7.4.6
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '7.4.5' );
+define( 'KAW_VERSION', '7.4.6' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -43,14 +43,14 @@ function kaw_default_sources() {
             'base'  => 'https://www.listmag.com',
             'feed'  => 'https://www.listmag.com/en',
             'host'  => 'listmag.com',
-            'link'  => '//h2/a | //h3/a | //h4/a | //article//a | //a[contains(@class,"title")] | //a[contains(@class,"card")]',
+            'link'  => '//a[starts-with(@href,"/en/")]',
         ],
         'scoop' => [
             'label' => 'Scoop Empire',
             'base'  => 'https://scoopempire.com',
-            'feed'  => 'https://scoopempire.com/category/news-politics/',
+            'feed'  => 'https://scoopempire.com/feed/',
             'host'  => 'scoopempire.com',
-            'link'  => '//h2/a | //h3/a',
+            'link'  => '//item/link',
         ],
         'lovin_ar' => [
             'label' => 'Lovin Cairo (AR)',
@@ -138,10 +138,10 @@ function kaw_default_sources() {
         ],
         '7iber' => [
             'label' => 'حبر (7iber)',
-            'base'  => 'https://www.7iber.com',
-            'feed'  => 'https://www.7iber.com/feed/',
+            'base'  => 'https://7iber.com',
+            'feed'  => 'https://7iber.com/feed/',
             'host'  => '7iber.com',
-            'link'  => '//article//h2/a | //article//h3/a | //h2/a | //h3/a | //a[contains(@class,"title")]',
+            'link'  => '//item/link | //article//h2/a | //article//h3/a | //h2/a | //h3/a | //a[contains(@class,"title")]',
         ],
     ];
 }
@@ -1005,6 +1005,10 @@ function kaw_parse_news( $html, $source, $src ) {
             continue;
         }
 
+        // Filter out section landing pages for specific sites
+        if ( $source === 'filfan' && ! preg_match('#/news/\d+#', $url) ) continue;
+        if ( $source === 'list' && count(explode('/', $url_path)) < 3 ) continue;
+
         $url_key   = strtolower( rtrim( $url, '/' ) );
         $title_key = mb_strtolower( $title );
         if ( isset( $seen_urls[$url_key] ) || isset( $seen_titles[$title_key] ) ) continue;
@@ -1025,9 +1029,10 @@ function kaw_ajax_fetch_article() {
     check_ajax_referer( 'kaw_nonce', 'nonce' );
     if ( ! current_user_can('edit_posts') ) wp_send_json_error('Permission denied.');
 
-    $raw_url = sanitize_text_field( wp_unslash( $_POST['url'] ?? '' ) );
+    // Do NOT use sanitize_text_field on URLs: it strips % hex octets (%D9, %85, etc.), corrupting non-ASCII/Arabic URLs into 404s.
+    $raw_url = trim( wp_unslash( $_POST['url'] ?? '' ) );
     if ( empty($raw_url) ) wp_send_json_error('No URL provided.');
-    if ( preg_match( '/^(javascript|mailto|tel):/i', $raw_url ) || strpos( $raw_url, 'javascript' ) !== false ) {
+    if ( preg_match( '/^(javascript|mailto|tel|data|blob):/i', $raw_url ) || strpos( $raw_url, 'javascript' ) !== false ) {
         wp_send_json_error('Invalid article link (interactive element or script, not an article).');
     }
 
@@ -1168,6 +1173,10 @@ function kaw_ajax_fetch_article() {
     $image   = kaw_extract_og_image( $html );
 
     if ( empty( $content ) || strlen( $content ) < 80 ) {
+        // If the page has images/video inside the article container (e.g. Manshoor carousel/infographic), provide helpful feedback
+        if ( preg_match( '/<(?:img|iframe|video)\b/i', $html ) && ( strpos( $html, 'article__body' ) !== false || strpos( $html, 'article' ) !== false ) ) {
+            wp_send_json_error( 'Visual story / infographic (no text body in source).' );
+        }
         wp_send_json_error( 'Could not extract article body from page HTML.' );
     }
 

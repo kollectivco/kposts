@@ -1,5 +1,14 @@
 # Changelog
 
+## 7.4.6
+
+- Fixed article content fetching for Arabic and non-ASCII URLs by avoiding `sanitize_text_field()` on incoming article URLs (which previously stripped percent-encoded hex octets like `%D8%A8`, causing false HTTP 404/400 errors across news sources).
+- Switched Scoop Empire to its official RSS feed (`/feed/`) to prevent Cloudflare bot firewall challenge blocks.
+- Updated List Magazine source selector and filters to parse real articles and ignore section landing pages.
+- Filtered out author/opinion category landing pages (`/news/articles`) on FilFan to keep only real articles (`/news/\d+`).
+- Fixed 7iber domain URL by removing obsolete `www.` subdomain that lacked DNS records.
+- Added informative feedback for visual stories and image infographics without text body.
+
 ## 7.4.5
 
 - Added OpenRouter (`openrouter.ai`) as a supported AI provider with default model `openai/gpt-4o`.
