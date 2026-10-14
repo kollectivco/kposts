@@ -1,5 +1,10 @@
 # Changelog
 
+## 7.4.7
+
+- Reduced OpenRouter default token reservation to 2048 tokens to avoid exceeding account or key credit limits.
+- Added automatic recovery and retry for OpenRouter HTTP 402 token reservation limits: the engine now automatically parses the exact affordable tokens returned by the API and retries seamlessly without error.
+
 ## 7.4.6
 
 - Fixed article content fetching for Arabic and non-ASCII URLs by avoiding `sanitize_text_field()` on incoming article URLs (which previously stripped percent-encoded hex octets like `%D8%A8`, causing false HTTP 404/400 errors across news sources).

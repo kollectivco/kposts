@@ -3,14 +3,14 @@
  * Plugin Name: Kontentainment AI Writer
  * Plugin URI:  https://kontentainment.com
  * Description: AI article rewriter with multi-provider support (OpenRouter, Claude, ChatGPT, Gemini, DeepSeek, Mistral, Qwen, Poe), manageable news sources, source-accurate rewriting, images, SEO, and Egyptian Arabic style.
- * Version:     7.4.6
+ * Version:     7.4.7
  * Author:      Kontentainment
  * License:     GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'KAW_VERSION', '7.4.6' );
+define( 'KAW_VERSION', '7.4.7' );
 define( 'KAW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'KAW_URL',  plugin_dir_url( __FILE__ ) );
 
@@ -1455,7 +1455,7 @@ function kaw_call_provider( $provider, $system, $user, $max_tokens = 8192 ) {
     if ( ( $provider['pkey'] ?? '' ) === 'openrouter' ) {
         $headers['HTTP-Referer'] = 'https://kontentainment.com';
         $headers['X-Title']      = 'Kontentainment AI Writer';
-        $req_tokens              = min( (int) $max_tokens, 3500 );
+        $req_tokens              = min( (int) $max_tokens, 2048 );
     }
 
     $request_args = [
@@ -1478,6 +1478,29 @@ function kaw_call_provider( $provider, $system, $user, $max_tokens = 8192 ) {
         if ( $attempt === $max_attempts || ! in_array($status, [ 408, 429, 500, 502, 503, 504 ], true) ) break;
         $delay_ms = ( (int) pow(2, $attempt - 1) * 1000 ) + mt_rand(100, 1000);
         usleep($delay_ms * 1000);
+    }
+
+    // Auto-recovery for OpenRouter credit reservation / token limit errors
+    if ( ( $provider['pkey'] ?? '' ) === 'openrouter' && ! is_wp_error($resp) ) {
+        $status = (int) wp_remote_retrieve_response_code($resp);
+        $raw    = wp_remote_retrieve_body($resp);
+        if ( $status === 402 || strpos($raw, 'can only afford') !== false ) {
+            if ( preg_match('/can only afford (\d+)/i', $raw, $m) ) {
+                $affordable = (int) $m[1];
+                if ( $affordable >= 200 ) {
+                    $retry_tokens = max( 150, $affordable - 50 );
+                    $request_args['body'] = wp_json_encode([
+                        'model'      => $model,
+                        'max_tokens' => $retry_tokens,
+                        'messages'   => [
+                            [ 'role' => 'system', 'content' => $system ],
+                            [ 'role' => 'user',   'content' => $user ],
+                        ],
+                    ]);
+                    $resp = wp_remote_post( $endpoint, $request_args );
+                }
+            }
+        }
     }
     $body = kaw_decode_provider_response( $resp, $provider );
     if ( is_wp_error($body) ) return $body;
